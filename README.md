@@ -81,3 +81,9 @@ This repository now deploys from the repository root (`./`). Do not set Vercel R
 ## Canonical local / Vercel entrypoint
 
 Use `main.py` from the repository root for both local Uvicorn and Vercel FastAPI deployment. Vercel settings: Framework Preset **FastAPI**, Root Directory `./`, default build/install/output settings, and `GEMINI_API_KEY` in Environment Variables. The production API is under `/api/*`; `/api/health` is the deployment check. Do not add `vercel.json`.
+
+## FINAL VERCEL CONFIGURATION
+
+Use **Framework Preset: Other**. Do not use FastAPI or FastHTML presets for this package.
+The root `vercel.json` explicitly builds `main.py` with the Vercel Python runtime and sends all routes to the same ASGI app.
+See `VERCEL_SETUP.md` for the exact settings and environment variables.

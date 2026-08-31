@@ -1,46 +1,42 @@
-# Vercel deployment — canonical setup
+# Vercel deployment settings — use Framework Preset: Other
 
-This repository uses one canonical FastAPI entrypoint: **`main.py`**.
-There is deliberately **no `vercel.json`**, avoiding rewrite/includeFiles schema conflicts.
-`api/index.py` remains only as a compatibility adapter and imports the same app.
+This package intentionally uses **Framework Preset = Other**, not FastAPI and not FastHTML.
 
-## Vercel project settings
-- Framework Preset: **FastAPI**
+## Required project settings
+
+- Framework Preset: `Other`
 - Root Directory: `./`
-- Build Command: leave default / no override
-- Output Directory: leave default / no override
-- Install Command: leave default / no override
-- Development Command: leave default / no override
-- Python: `.python-version` -> 3.12
+- Build Command: leave Override OFF / default
+- Output Directory: leave Override OFF / default
+- Install Command: leave Override OFF / default
+- Development Command: leave Override OFF / default
+
+Do not select the FastAPI or FastHTML preset. Do not configure a manual Python entrypoint in the Vercel dashboard.
+The repository-level `vercel.json` routes every request to the single root `main.py` ASGI application.
 
 ## Environment variables
-Required:
-- `GEMINI_API_KEY`
 
-Recommended:
-- `GEMINI_MODEL=gemini-2.5-flash`
-- `GEMINI_PARALLEL_WORKERS=3`
-- `GEMINI_ANALYSIS_MAX_DIM=1600`
-- `ANALYSIS_TRANSIENT_RETRIES=2`
+Add these under Project Settings -> Environment Variables (Production and Preview):
 
-Apply them to Production and Preview, then redeploy.
+- `GEMINI_API_KEY` = your API key
+- `GEMINI_MODEL` = `gemini-2.5-flash`
+- `GEMINI_PARALLEL_WORKERS` = `3`
+- `GEMINI_ANALYSIS_MAX_DIM` = `1600`
+- `ANALYSIS_TRANSIENT_RETRIES` = `2`
 
-## Routes
-- UI: `/`
-- Health: `/api/health`
-- Upload: `/api/upload-batch`
-- Analysis: `/api/analyze-batch`
-- Other backend endpoints: `/api/...`
+Never commit `backend/.env` to GitHub.
 
-The root app also preserves non-prefixed backend routes for local compatibility.
+## Expected production routes
 
-## Storage
-All generated runtime files use `/tmp/ballooning_data` on Vercel. The deployed
-bundle under `/var/task` is read-only. `/tmp` is ephemeral; persistent project
-history requires external storage later.
+- `/` -> frontend
+- `/assets/...` -> frontend static assets
+- `/api/health` -> backend health JSON
+- `/api/upload-batch` -> upload endpoint
+- `/api/analyze-batch` -> batch analysis endpoint
 
 ## Local run
-From repository root:
+
+From the repository root:
 
 ```powershell
 python -m pip install -r requirements.txt
@@ -48,12 +44,3 @@ python -m uvicorn main:app --reload
 ```
 
 Open `http://127.0.0.1:8000`.
-
-## Verification
-Run:
-
-```powershell
-python scripts/verify_vercel_layout.py
-```
-
-Expected: `Vercel layout verification: PASS`.
