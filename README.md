@@ -67,13 +67,12 @@ Open `http://localhost:5500`.
 - Do not commit `node_modules`, Python caches, generated analysis cache, project runtime data, or local editor files.
 - If a real key was ever committed previously, revoke/rotate it before using the repository again.
 
-## Vercel deployment (configured)
-This package is configured for a **single Vercel deployment** with `backend` as the Vercel **Root Directory**.
+## Permanent Vercel deployment layout
 
-1. In Vercel Project Settings, set **Root Directory** to `backend`.
-2. Add `GEMINI_API_KEY` under **Settings → Environment Variables** (Production/Preview as needed). Never commit the real key.
-3. Redeploy. Vercel serves the bundled UI from `/` and the FastAPI endpoints from the same origin.
-4. On Vercel, generated uploads, previews, PDFs, Excel files, manifests, and analysis cache are written under `/tmp/ballooning_data` because `/var/task` is read-only.
+This repository now deploys from the repository root (`./`). Do not set Vercel Root Directory to `backend`.
 
-### Storage note
-Vercel `/tmp` storage is ephemeral. The upload → analyze → review → download workflow works within the active serverless instance, but long-term project history is not guaranteed. Persistent project history should later be moved to object storage/database (for example Vercel Blob/S3 + a database).
+- `app/main.py` is the single Vercel entrypoint and imports the real application from `backend/app/main.py`.
+- Runtime/generated files use `/tmp/ballooning_data` automatically on Vercel; `/var/task` is never used for writes.
+- The frontend is served by the FastAPI app from `frontend/`, so the site and API use one deployment/domain.
+- `GEMINI_API_KEY` must be configured in Vercel Project Settings -> Environment Variables and must never be committed.
+- `/tmp` is ephemeral. For permanent project history, move generated project data to persistent object/database storage later.

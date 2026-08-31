@@ -1,5 +1,4 @@
-const IS_LOCAL=['localhost','127.0.0.1'].includes(window.location.hostname);
-const API=IS_LOCAL?'http://127.0.0.1:8000':'';
+const API=(location.hostname==='127.0.0.1'||location.hostname==='localhost')?'http://127.0.0.1:8000':'';
 const $=id=>document.getElementById(id);
 let selectedFiles=[], projectId=null, drawings=[], currentIndex=0, loadedDrawingIndex=null;
 let balloons=[], originalBalloons=[], selected=null, drag=null, zoom=1, mode='select', undoStack=[];
@@ -77,7 +76,7 @@ async function startAnalysis(){
   try{
     // Fail fast with a visible message if the local API is not running.
     const hr=await fetch(API+'/health',{cache:'no-store'}).catch(()=>null);
-    if(!hr||!hr.ok)throw new Error(IS_LOCAL?'Analysis engine is offline. Start the backend at 127.0.0.1:8000 and try again.':'Analysis engine is unavailable. Please retry in a moment.');
+    if(!hr||!hr.ok)throw new Error('Analysis engine is unavailable. Please retry in a moment.');
     const hj=await hr.json().catch(()=>({}));
     if(!hj.analysis_configured)throw new Error('Analysis engine needs an API key in backend/.env. Add the key, restart the backend, and try again.');
 

@@ -1,5 +1,6 @@
 import json
 import os
+import tempfile
 import re
 import time
 from io import BytesIO
@@ -86,8 +87,15 @@ For each characteristic also return a short description based only on visible ne
 
 
 def _learning_path() -> str:
+    # Keep reviewer-learning writes on writable runtime storage in serverless deployments.
     backend_dir = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
-    return os.path.join(backend_dir, 'data', 'learning', 'corrections.jsonl')
+    default_data = os.path.join(backend_dir, 'data')
+    if os.getenv('VERCEL'):
+        default_data = os.path.join(tempfile.gettempdir(), 'ballooning_data')
+    data_dir = os.path.abspath(os.getenv('BALLOONING_DATA_DIR', default_data))
+    learning_dir = os.path.join(data_dir, 'learning')
+    os.makedirs(learning_dir, exist_ok=True)
+    return os.path.join(learning_dir, 'corrections.jsonl')
 
 
 def _learning_context(limit: int = 8) -> str:

@@ -2,6 +2,7 @@ import json
 import copy
 import os
 import shutil
+import tempfile
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import uuid
 import zipfile
@@ -20,36 +21,26 @@ from .services.pdf_processor import export_ballooned_pdf, page_count, render_pag
 from .services.gemini_analyzer import analyze_with_gemini, analyze_batch_with_gemini
 
 BASE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-IS_VERCEL = bool(os.getenv('VERCEL'))
 
-# Vercel's deployed application directory (/var/task) is read-only. All files
-# created while a request is running must therefore live under /tmp. Local
-# development keeps the existing backend/data layout.
-if IS_VERCEL:
-    DATA = os.path.join('/tmp', 'ballooning_data')
-else:
-    DATA = os.path.join(BASE, 'data')
-
+# Runtime storage policy:
+# - Local development: backend/data
+# - Vercel/serverless: /tmp/ballooning_data (the deployment bundle under /var/task is read-only)
+# - Optional override: BALLOONING_DATA_DIR
+_DEFAULT_DATA = os.path.join(BASE, 'data')
+if os.getenv('VERCEL'):
+    _DEFAULT_DATA = os.path.join(tempfile.gettempdir(), 'ballooning_data')
+DATA = os.path.abspath(os.getenv('BALLOONING_DATA_DIR', _DEFAULT_DATA))
 PROJECTS = os.path.join(DATA, 'projects')
 LEARNING = os.path.join(DATA, 'learning')
-for runtime_dir in (DATA, PROJECTS, LEARNING):
-    os.makedirs(runtime_dir, exist_ok=True)
+for _folder in (DATA, PROJECTS, LEARNING):
+    os.makedirs(_folder, exist_ok=True)
 
-# Local development reads backend/.env. On Vercel the API key must be supplied
-# through Project Settings -> Environment Variables, so no .env file is needed.
-if not IS_VERCEL:
+# .env is only a local-development convenience. Vercel values come from Project Environment Variables.
+if not os.getenv('VERCEL'):
     load_dotenv(os.path.join(BASE, '.env'))
 
-app = FastAPI(title='DFAB Engineering Drawing Inspection API', version='0.6.0')
+app = FastAPI(title='InspectBalloon API', version='0.5.0')
 app.add_middleware(CORSMiddleware, allow_origins=['*'], allow_methods=['*'], allow_headers=['*'])
-
-# The Vercel deployment uses `backend` as the project Root Directory. A copy of
-# the production frontend is bundled in backend/site so the API and UI share the
-# same origin and no localhost URL is required in production.
-SITE = os.path.join(BASE, 'site')
-ASSETS = os.path.join(SITE, 'assets')
-if os.path.isdir(ASSETS):
-    app.mount('/assets', StaticFiles(directory=ASSETS), name='assets')
 
 
 class Balloon(BaseModel):
@@ -395,27 +386,6 @@ def _inspection_filename(report: InspectionReportPayload, fallback: str) -> str:
     return _safe_name(report.drawing_number, fallback) + '_inspection_report.xlsx'
 
 
-@app.get('/')
-def frontend_home():
-    index_path = os.path.join(SITE, 'index.html')
-    if not os.path.exists(index_path):
-        return {'ok': True, 'service': 'DFAB Engineering Drawing Inspection API'}
-    return FileResponse(index_path, media_type='text/html')
-
-
-@app.get('/favicon.ico')
-def favicon_ico():
-    icon = os.path.join(ASSETS, 'img', 'dfab-favicon.png')
-    if not os.path.exists(icon):
-        raise HTTPException(404, 'Favicon not found')
-    return FileResponse(icon, media_type='image/png')
-
-
-@app.get('/favicon.png')
-def favicon_png():
-    return favicon_ico()
-
-
 @app.get('/health')
 def health():
     learning_path = os.path.join(LEARNING, 'corrections.jsonl')
@@ -432,7 +402,6 @@ def health():
         'analysis_configured': bool(os.getenv('GEMINI_API_KEY') or os.getenv('GOOGLE_API_KEY')),
         'analysis_model_configured': bool(os.getenv('GEMINI_MODEL', '')),
         'learning_examples': learned,
-        'runtime_storage': 'temporary' if IS_VERCEL else 'local',
     }
 
 
@@ -776,3 +745,10 @@ def export_project(project_id: str, payload: ProjectExportPayload):
         raise HTTPException(400, 'No reviewed drawings were available to export')
     filename = _safe_name(payload.project_name, 'ballooned_drawings') + '.zip'
     return FileResponse(zip_path, media_type='application/zip', filename=filename)
+
+# Serve the existing frontend from the same FastAPI deployment.
+# This is intentionally mounted after all API routes so API endpoints keep priority.
+_FRONTEND_DIR = os.path.abspath(os.path.join(BASE, '..', 'frontend'))
+if os.path.isdir(_FRONTEND_DIR):
+    app.mount('/', StaticFiles(directory=_FRONTEND_DIR, html=True), name='frontend')
+

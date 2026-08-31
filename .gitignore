@@ -41,11 +41,6 @@ backend/data/learning/
 *.temp
 ~$*.xlsx
 
-# Vercel/local runtime artifacts (generated, never commit project uploads/outputs)
-backend/data/*
-!backend/data/projects/
-!backend/data/projects/.gitkeep
-!backend/data/learning/
-!backend/data/learning/.gitkeep
-!backend/data/analysis_cache/
-!backend/data/analysis_cache/.gitkeep
+# Vercel/serverless runtime data (never commit generated project files)
+backend/data/
+data/
