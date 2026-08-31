@@ -1,29 +1,59 @@
 # Vercel deployment — canonical setup
 
-This repository intentionally uses **zero `vercel.json` configuration**.
-Current Vercel Python/FastAPI routing auto-detects `api/index.py` as the ASGI function.
-The static UI is served from repository-root `index.html` + `assets/`.
+This repository uses one canonical FastAPI entrypoint: **`main.py`**.
+There is deliberately **no `vercel.json`**, avoiding rewrite/includeFiles schema conflicts.
+`api/index.py` remains only as a compatibility adapter and imports the same app.
 
 ## Vercel project settings
-- Framework / preset: Other or FastAPI (auto-detection is fine)
-- Root Directory: `./` (repository root)
-- Build Command: leave empty/default
-- Output Directory: leave empty/default
-- Install Command: leave empty/default
-- Environment variable required: `GEMINI_API_KEY`
-- Optional: `GEMINI_MODEL` and `GEMINI_FALLBACK_MODELS`
+- Framework Preset: **FastAPI**
+- Root Directory: `./`
+- Build Command: leave default / no override
+- Output Directory: leave default / no override
+- Install Command: leave default / no override
+- Development Command: leave default / no override
+- Python: `.python-version` -> 3.12
+
+## Environment variables
+Required:
+- `GEMINI_API_KEY`
+
+Recommended:
+- `GEMINI_MODEL=gemini-2.5-flash`
+- `GEMINI_PARALLEL_WORKERS=3`
+- `GEMINI_ANALYSIS_MAX_DIM=1600`
+- `ANALYSIS_TRANSIENT_RETRIES=2`
+
+Apply them to Production and Preview, then redeploy.
 
 ## Routes
 - UI: `/`
-- API health: `/api/health`
-- All other backend endpoints: `/api/...`
+- Health: `/api/health`
+- Upload: `/api/upload-batch`
+- Analysis: `/api/analyze-batch`
+- Other backend endpoints: `/api/...`
+
+The root app also preserves non-prefixed backend routes for local compatibility.
 
 ## Storage
-Vercel runtime writes only to `/tmp/ballooning_data`. Never write generated files under `/var/task`.
-`/tmp` is ephemeral; persistent project history requires external object/database storage.
+All generated runtime files use `/tmp/ballooning_data` on Vercel. The deployed
+bundle under `/var/task` is read-only. `/tmp` is ephemeral; persistent project
+history requires external storage later.
 
-## Before deploying
-1. Ensure `vercel.json` does **not** exist.
-2. Ensure `api/index.py` exists.
-3. Ensure root `index.html`, `assets/`, `requirements.txt`, and `.python-version` exist.
-4. Push the latest commit to GitHub, then deploy that commit.
+## Local run
+From repository root:
+
+```powershell
+python -m pip install -r requirements.txt
+python -m uvicorn main:app --reload
+```
+
+Open `http://127.0.0.1:8000`.
+
+## Verification
+Run:
+
+```powershell
+python scripts/verify_vercel_layout.py
+```
+
+Expected: `Vercel layout verification: PASS`.

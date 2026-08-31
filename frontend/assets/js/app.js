@@ -1,4 +1,4 @@
-const API=(location.hostname==='127.0.0.1'||location.hostname==='localhost')?'http://127.0.0.1:8000':'';
+const API=(location.hostname==='127.0.0.1'||location.hostname==='localhost')?'http://127.0.0.1:8000':'/api';
 const $=id=>document.getElementById(id);
 let selectedFiles=[], projectId=null, drawings=[], currentIndex=0, loadedDrawingIndex=null;
 let balloons=[], originalBalloons=[], selected=null, drag=null, zoom=1, mode='select', undoStack=[];

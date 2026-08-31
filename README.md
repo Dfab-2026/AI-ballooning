@@ -76,3 +76,8 @@ This repository now deploys from the repository root (`./`). Do not set Vercel R
 - The frontend is served by the FastAPI app from `frontend/`, so the site and API use one deployment/domain.
 - `GEMINI_API_KEY` must be configured in Vercel Project Settings -> Environment Variables and must never be committed.
 - `/tmp` is ephemeral. For permanent project history, move generated project data to persistent object/database storage later.
+
+
+## Canonical local / Vercel entrypoint
+
+Use `main.py` from the repository root for both local Uvicorn and Vercel FastAPI deployment. Vercel settings: Framework Preset **FastAPI**, Root Directory `./`, default build/install/output settings, and `GEMINI_API_KEY` in Environment Variables. The production API is under `/api/*`; `/api/health` is the deployment check. Do not add `vercel.json`.

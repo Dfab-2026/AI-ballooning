@@ -1,10 +1,9 @@
-"""Vercel ASGI entrypoint for the DFAB ballooning API.
+"""Compatibility Vercel ASGI entrypoint.
 
-/api/* is mounted to the existing backend. The project root also contains
-index.html/assets for Vercel static hosting, so no vercel.json is required.
+The canonical application lives at repository-root `main.py`. Keeping this small
+adapter means older Vercel projects that still discover `api/index.py` expose the
+same application and routing behavior.
 """
-from fastapi import FastAPI
-from backend.app.main import app as backend_app
+from main import app
 
-app = FastAPI(title="DFAB Engineering Drawing Inspection")
-app.mount("/api", backend_app)
+__all__ = ["app"]
