@@ -5,12 +5,14 @@
 **/*.pyo
 **/*.log
 **/*.zip
-backend/.env
 .env
+backend/.env
 backend/data
+frontend
 node_modules
 frontend/node_modules
 .vscode
 .idea
 start-backend.bat
 start-frontend.bat
+README*.bak

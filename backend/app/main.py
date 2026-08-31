@@ -14,7 +14,6 @@ from dotenv import load_dotenv
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
-from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from .services.pdf_processor import export_ballooned_pdf, page_count, render_page
@@ -27,7 +26,7 @@ BASE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 # - Vercel/serverless: /tmp/ballooning_data (the deployment bundle under /var/task is read-only)
 # - Optional override: BALLOONING_DATA_DIR
 _DEFAULT_DATA = os.path.join(BASE, 'data')
-if os.getenv('VERCEL'):
+if os.getenv('VERCEL') or os.path.abspath(os.getcwd()).startswith('/var/task'):
     _DEFAULT_DATA = os.path.join(tempfile.gettempdir(), 'ballooning_data')
 DATA = os.path.abspath(os.getenv('BALLOONING_DATA_DIR', _DEFAULT_DATA))
 PROJECTS = os.path.join(DATA, 'projects')
@@ -292,6 +291,13 @@ def _finalize_analysis_result(drawing_id: str, analysis: dict, cached: bool = Fa
 
 
 def _inspection_template_path() -> str:
+    # Vercel bundles the deployment asset beside api/index.py; local development
+    # continues to use backend/templates.
+    if os.getenv('VERCEL') or os.path.abspath(os.getcwd()).startswith('/var/task'):
+        root = os.path.dirname(BASE)
+        bundled = os.path.join(root, 'api', 'assets', 'final_inspection_template.xlsx')
+        if os.path.exists(bundled):
+            return bundled
     return os.path.join(BASE, 'templates', 'final_inspection_template.xlsx')
 
 
@@ -745,10 +751,3 @@ def export_project(project_id: str, payload: ProjectExportPayload):
         raise HTTPException(400, 'No reviewed drawings were available to export')
     filename = _safe_name(payload.project_name, 'ballooned_drawings') + '.zip'
     return FileResponse(zip_path, media_type='application/zip', filename=filename)
-
-# Serve the existing frontend from the same FastAPI deployment.
-# This is intentionally mounted after all API routes so API endpoints keep priority.
-_FRONTEND_DIR = os.path.abspath(os.path.join(BASE, '..', 'frontend'))
-if os.path.isdir(_FRONTEND_DIR):
-    app.mount('/', StaticFiles(directory=_FRONTEND_DIR, html=True), name='frontend')
-

@@ -1,46 +1,26 @@
-# Secrets and local environment
 .env
 .env.*
 !.env.example
 backend/.env
-frontend/.env
-
-# Python
 __pycache__/
 *.py[cod]
-*.pyo
-*.pyd
-venv/
 .venv/
-ENV/
-env/
-.pytest_cache/
-.mypy_cache/
-
-# Node / frontend
+venv/
 node_modules/
 frontend/node_modules/
-dist/
-build/
-.vite/
-
-# IDE / OS
-.vscode/
-.idea/
+backend/data/*
+!backend/data/analysis_cache/
+!backend/data/learning/
+!backend/data/projects/
+backend/data/analysis_cache/*
+!backend/data/analysis_cache/.gitkeep
+backend/data/learning/*
+!backend/data/learning/.gitkeep
+backend/data/projects/*
+!backend/data/projects/.gitkeep
+.vercel/
 .DS_Store
 Thumbs.db
-
-# Runtime / generated analysis data
-backend/data/analysis_cache/
-backend/data/projects/
-backend/data/learning/
-
-# Logs / temporary files
 *.log
 *.tmp
-*.temp
-~$*.xlsx
-
-# Vercel/serverless runtime data (never commit generated project files)
-backend/data/
-data/
+*.zip
