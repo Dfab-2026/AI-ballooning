@@ -1,0 +1,28 @@
+{
+  "project_id": "0fbdcac4-3250-4481-b23c-dde69b587e89",
+  "project_name": "Test",
+  "drawings": [
+    {
+      "drawing_id": "66fc1e70-9d97-480b-9592-8f906396aa74",
+      "project_id": "0fbdcac4-3250-4481-b23c-dde69b587e89",
+      "source_filename": "multi.pdf",
+      "page_index": 0,
+      "page_number": 1,
+      "source_pages": 2,
+      "drawing_number": "multi · Sheet 1",
+      "preview_url": "/preview/66fc1e70-9d97-480b-9592-8f906396aa74",
+      "status": "uploaded"
+    },
+    {
+      "drawing_id": "1d3d3a5b-9286-4acb-a2eb-81e8d7513052",
+      "project_id": "0fbdcac4-3250-4481-b23c-dde69b587e89",
+      "source_filename": "multi.pdf",
+      "page_index": 1,
+      "page_number": 2,
+      "source_pages": 2,
+      "drawing_number": "multi · Sheet 2",
+      "preview_url": "/preview/1d3d3a5b-9286-4acb-a2eb-81e8d7513052",
+      "status": "uploaded"
+    }
+  ]
+}

@@ -1,0 +1,163 @@
+{
+  "drawing_id": "ef9c3202-e88b-48c6-b538-aab7db33b2f8",
+  "drawing_number": "DFSSPL-DWRL-0050",
+  "engine": "gemini",
+  "model": "gemini-3.6-flash",
+  "characteristics": [
+    {
+      "number": 1,
+      "text": "4±0.1",
+      "type": "TOL",
+      "x": 202.684,
+      "y": 163.816,
+      "target_x": 147.684,
+      "target_y": 208.816,
+      "confidence": 0.98,
+      "source": "gemini"
+    },
+    {
+      "number": 2,
+      "text": "60±0.3",
+      "type": "TOL",
+      "x": 652.882,
+      "y": 163.816,
+      "target_x": 597.882,
+      "target_y": 208.816,
+      "confidence": 0.98,
+      "source": "gemini"
+    },
+    {
+      "number": 3,
+      "text": "R25±0.065",
+      "type": "RAD",
+      "x": 1069.732,
+      "y": 357.476,
+      "target_x": 1014.732,
+      "target_y": 402.476,
+      "confidence": 0.98,
+      "source": "gemini"
+    },
+    {
+      "number": 4,
+      "text": "38±0.3",
+      "type": "TOL",
+      "x": 174.10000000000002,
+      "y": 394.524,
+      "target_x": 119.10000000000001,
+      "target_y": 439.524,
+      "confidence": 0.98,
+      "source": "gemini"
+    },
+    {
+      "number": 5,
+      "text": "5±0.1",
+      "type": "TOL",
+      "x": 1086.406,
+      "y": 733.008,
+      "target_x": 1031.406,
+      "target_y": 778.008,
+      "confidence": 0.98,
+      "source": "gemini"
+    },
+    {
+      "number": 6,
+      "text": "5±0.1",
+      "type": "TOL",
+      "x": 357.514,
+      "y": 839.1,
+      "target_x": 302.514,
+      "target_y": 884.1,
+      "confidence": 0.98,
+      "source": "gemini"
+    },
+    {
+      "number": 7,
+      "text": "4±0.1",
+      "type": "TOL",
+      "x": 202.684,
+      "y": 877.8320000000001,
+      "target_x": 147.684,
+      "target_y": 922.8320000000001,
+      "confidence": 0.98,
+      "source": "gemini"
+    },
+    {
+      "number": 8,
+      "text": "60±0.3",
+      "type": "TOL",
+      "x": 652.882,
+      "y": 877.8320000000001,
+      "target_x": 597.882,
+      "target_y": 922.8320000000001,
+      "confidence": 0.98,
+      "source": "gemini"
+    },
+    {
+      "number": 9,
+      "text": "9±0.2",
+      "type": "TOL",
+      "x": 2053.4979999999996,
+      "y": 903.0919999999999,
+      "target_x": 1998.4979999999998,
+      "target_y": 948.0919999999999,
+      "confidence": 0.98,
+      "source": "gemini"
+    },
+    {
+      "number": 10,
+      "text": "38±0.3",
+      "type": "TOL",
+      "x": 1736.692,
+      "y": 921.6159999999999,
+      "target_x": 1681.692,
+      "target_y": 966.6159999999999,
+      "confidence": 0.98,
+      "source": "gemini"
+    },
+    {
+      "number": 11,
+      "text": "5±0.1",
+      "type": "TOL",
+      "x": 1384.1560000000002,
+      "y": 926.6679999999999,
+      "target_x": 1329.1560000000002,
+      "target_y": 971.6679999999999,
+      "confidence": 0.98,
+      "source": "gemini"
+    },
+    {
+      "number": 12,
+      "text": "4±0.1",
+      "type": "TOL",
+      "x": 1398.4479999999999,
+      "y": 1148.956,
+      "target_x": 1343.4479999999999,
+      "target_y": 1193.956,
+      "confidence": 0.98,
+      "source": "gemini"
+    },
+    {
+      "number": 13,
+      "text": "30±0.3",
+      "type": "TOL",
+      "x": 1736.692,
+      "y": 1148.956,
+      "target_x": 1681.692,
+      "target_y": 1193.956,
+      "confidence": 0.98,
+      "source": "gemini"
+    },
+    {
+      "number": 14,
+      "text": "4±0.1",
+      "type": "TOL",
+      "x": 1069.732,
+      "y": 1179.268,
+      "target_x": 1014.732,
+      "target_y": 1224.268,
+      "confidence": 0.98,
+      "source": "gemini"
+    }
+  ],
+  "count": 14
+}

@@ -1,0 +1,252 @@
+{
+  "drawing_number": "DFSSPL-DWRL-0050",
+  "engine": "analysis",
+  "model": "gemini-3.5-flash",
+  "characteristics": [
+    {
+      "number": 1,
+      "text": "38±0.3",
+      "type": "DIM",
+      "x": 2174.98,
+      "y": 24,
+      "target_x": 2119.98,
+      "target_y": 58.940000000000005,
+      "confidence": 0.95,
+      "source": "analysis"
+    },
+    {
+      "number": 2,
+      "text": "4±0.1",
+      "type": "DIM",
+      "x": 145.516,
+      "y": 39.2,
+      "target_x": 90.51599999999999,
+      "target_y": 84.2,
+      "confidence": 0.95,
+      "source": "analysis"
+    },
+    {
+      "number": 3,
+      "text": "4±0.1",
+      "type": "DIM",
+      "x": 1912.96,
+      "y": 72.88000000000001,
+      "target_x": 1857.96,
+      "target_y": 117.88000000000001,
+      "confidence": 0.95,
+      "source": "analysis"
+    },
+    {
+      "number": 4,
+      "text": "38±0.3",
+      "type": "DIM",
+      "x": 102.64,
+      "y": 182.34,
+      "target_x": 47.64,
+      "target_y": 227.34,
+      "confidence": 0.95,
+      "source": "analysis"
+    },
+    {
+      "number": 5,
+      "text": "30±0.3",
+      "type": "DIM",
+      "x": 28.370000000000005,
+      "y": 182.34,
+      "target_x": 83.37,
+      "target_y": 227.34,
+      "confidence": 0.95,
+      "source": "analysis"
+    },
+    {
+      "number": 6,
+      "text": "28±0.2",
+      "type": "DIM",
+      "x": 2294.08,
+      "y": 182.34,
+      "target_x": 2239.08,
+      "target_y": 227.34,
+      "confidence": 0.95,
+      "source": "analysis"
+    },
+    {
+      "number": 7,
+      "text": "38±0.3",
+      "type": "DIM",
+      "x": 2358,
+      "y": 182.34,
+      "target_x": 2310.54,
+      "target_y": 227.34,
+      "confidence": 0.95,
+      "source": "analysis"
+    },
+    {
+      "number": 8,
+      "text": "1201.4±1.2",
+      "type": "DIM",
+      "x": 888.6999999999999,
+      "y": 291.8,
+      "target_x": 833.6999999999999,
+      "target_y": 336.8,
+      "confidence": 0.95,
+      "source": "analysis"
+    },
+    {
+      "number": 9,
+      "text": "60±0.3",
+      "type": "DIM",
+      "x": 1746.22,
+      "y": 291.8,
+      "target_x": 1691.22,
+      "target_y": 336.8,
+      "confidence": 0.95,
+      "source": "analysis"
+    },
+    {
+      "number": 10,
+      "text": "20±0.2",
+      "type": "DIM",
+      "x": 1901.05,
+      "y": 325.48,
+      "target_x": 1846.05,
+      "target_y": 370.48,
+      "confidence": 0.95,
+      "source": "analysis"
+    },
+    {
+      "number": 11,
+      "text": "28±0.2",
+      "type": "DIM",
+      "x": 1960.6000000000001,
+      "y": 325.48,
+      "target_x": 1905.6000000000001,
+      "target_y": 370.48,
+      "confidence": 0.95,
+      "source": "analysis"
+    },
+    {
+      "number": 12,
+      "text": "R28±0.065",
+      "type": "RAD",
+      "x": 233.65,
+      "y": 384.42,
+      "target_x": 178.65,
+      "target_y": 429.42,
+      "confidence": 0.95,
+      "source": "analysis"
+    },
+    {
+      "number": 13,
+      "text": "1261.4±1.2",
+      "type": "DIM",
+      "x": 1007.8000000000001,
+      "y": 426.52000000000004,
+      "target_x": 952.8000000000001,
+      "target_y": 471.52000000000004,
+      "confidence": 0.95,
+      "source": "analysis"
+    },
+    {
+      "number": 14,
+      "text": "R25±0.065",
+      "type": "RAD",
+      "x": 1936.78,
+      "y": 502.30000000000007,
+      "target_x": 1881.78,
+      "target_y": 547.3000000000001,
+      "confidence": 0.95,
+      "source": "analysis"
+    },
+    {
+      "number": 15,
+      "text": "4±0.1",
+      "type": "DIM",
+      "x": 317.02,
+      "y": 653.86,
+      "target_x": 262.02,
+      "target_y": 698.86,
+      "confidence": 0.95,
+      "source": "analysis"
+    },
+    {
+      "number": 16,
+      "text": "5±0.1",
+      "type": "DIM",
+      "x": 1889.14,
+      "y": 679.12,
+      "target_x": 1834.14,
+      "target_y": 724.12,
+      "confidence": 0.95,
+      "source": "analysis"
+    },
+    {
+      "number": 17,
+      "text": "69±0.3",
+      "type": "DIM",
+      "x": 352.75,
+      "y": 906.4599999999999,
+      "target_x": 297.75,
+      "target_y": 951.4599999999999,
+      "confidence": 0.95,
+      "source": "analysis"
+    },
+    {
+      "number": 18,
+      "text": "4±0.1",
+      "type": "DIM",
+      "x": 698.14,
+      "y": 923.3,
+      "target_x": 643.14,
+      "target_y": 968.3,
+      "confidence": 0.95,
+      "source": "analysis"
+    },
+    {
+      "number": 19,
+      "text": "57±0.3",
+      "type": "DIM",
+      "x": 162.19,
+      "y": 1108.5400000000002,
+      "target_x": 107.19,
+      "target_y": 1153.5400000000002,
+      "confidence": 0.95,
+      "source": "analysis"
+    },
+    {
+      "number": 20,
+      "text": "57±0.3",
+      "type": "DIM",
+      "x": 745.78,
+      "y": 1108.5400000000002,
+      "target_x": 690.78,
+      "target_y": 1153.5400000000002,
+      "confidence": 0.95,
+      "source": "analysis"
+    },
+    {
+      "number": 21,
+      "text": "78.6°",
+      "type": "ANG",
+      "x": 567.13,
+      "y": 1209.58,
+      "target_x": 512.13,
+      "target_y": 1254.58,
+      "confidence": 0.95,
+      "source": "analysis"
+    },
+    {
+      "number": 22,
+      "text": "46±0.3",
+      "type": "DIM",
+      "x": 352.75,
+      "y": 1276.94,
+      "target_x": 297.75,
+      "target_y": 1321.94,
+      "confidence": 0.95,
+      "source": "analysis"
+    }
+  ],
+  "count": 22,
+  "cached": true,
+  "drawing_id": "44a13133-b2aa-40f6-937f-7b8108988a42"
+}

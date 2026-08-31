@@ -1,0 +1,108 @@
+{
+  "drawing_id": "5c8de8be-8d36-4f3d-973a-c00898e1ef96",
+  "drawing_number": "DFSSPL-DWRL-0050",
+  "engine": "gemini",
+  "model": "gemini-3.6-flash",
+  "characteristics": [
+    {
+      "number": 1,
+      "text": "Ø56±0.095",
+      "type": "DIA",
+      "x": 450.41200000000003,
+      "y": 217.704,
+      "target_x": 395.41200000000003,
+      "target_y": 262.704,
+      "confidence": 0.98,
+      "source": "gemini"
+    },
+    {
+      "number": 2,
+      "text": "Ø60±0.095",
+      "type": "DIA",
+      "x": 1486.5819999999999,
+      "y": 217.704,
+      "target_x": 1431.5819999999999,
+      "target_y": 262.704,
+      "confidence": 0.98,
+      "source": "gemini"
+    },
+    {
+      "number": 3,
+      "text": "38±0.3",
+      "type": "DIM",
+      "x": 612.388,
+      "y": 236.228,
+      "target_x": 557.388,
+      "target_y": 281.228,
+      "confidence": 0.98,
+      "source": "gemini"
+    },
+    {
+      "number": 4,
+      "text": "1305.4±1.2",
+      "type": "DIM",
+      "x": 950.632,
+      "y": 414.732,
+      "target_x": 895.632,
+      "target_y": 459.732,
+      "confidence": 0.98,
+      "source": "gemini"
+    },
+    {
+      "number": 5,
+      "text": "1363.4±1.2",
+      "type": "DIM",
+      "x": 840.632,
+      "y": 455.14799999999997,
+      "target_x": 895.632,
+      "target_y": 500.14799999999997,
+      "confidence": 0.98,
+      "source": "gemini"
+    },
+    {
+      "number": 6,
+      "text": "Ø28±0.065",
+      "type": "DIA",
+      "x": 614.77,
+      "y": 978.872,
+      "target_x": 559.77,
+      "target_y": 1023.872,
+      "confidence": 0.98,
+      "source": "gemini"
+    },
+    {
+      "number": 7,
+      "text": "Ø28±0.065",
+      "type": "DIA",
+      "x": 1486.5819999999999,
+      "y": 988.9759999999999,
+      "target_x": 1431.5819999999999,
+      "target_y": 1033.9759999999999,
+      "confidence": 0.98,
+      "source": "gemini"
+    },
+    {
+      "number": 8,
+      "text": "28",
+      "type": "DIM",
+      "x": 1105.462,
+      "y": 1111.9080000000001,
+      "target_x": 1050.462,
+      "target_y": 1156.9080000000001,
+      "confidence": 0.95,
+      "source": "gemini"
+    },
+    {
+      "number": 9,
+      "text": "80±0.3",
+      "type": "DIM",
+      "x": 450.41200000000003,
+      "y": 1143.904,
+      "target_x": 395.41200000000003,
+      "target_y": 1188.904,
+      "confidence": 0.98,
+      "source": "gemini"
+    }
+  ],
+  "count": 9
+}

@@ -1,0 +1,109 @@
+{
+  "drawing_number": "DFSSPL-DWRL-0050",
+  "engine": "analysis",
+  "model": "gemini-3.5-flash",
+  "characteristics": [
+    {
+      "number": 1,
+      "text": "Ø56±0.095",
+      "type": "DIA",
+      "x": 424.21,
+      "y": 224.44,
+      "target_x": 369.21,
+      "target_y": 269.44,
+      "confidence": 0.95,
+      "source": "analysis"
+    },
+    {
+      "number": 2,
+      "text": "Ø60±0.095",
+      "type": "DIA",
+      "x": 1496.11,
+      "y": 224.44,
+      "target_x": 1441.11,
+      "target_y": 269.44,
+      "confidence": 0.95,
+      "source": "analysis"
+    },
+    {
+      "number": 3,
+      "text": "38±0.3",
+      "type": "DIM",
+      "x": 614.77,
+      "y": 232.86,
+      "target_x": 559.77,
+      "target_y": 277.86,
+      "confidence": 0.95,
+      "source": "analysis"
+    },
+    {
+      "number": 4,
+      "text": "1305.4±1.2",
+      "type": "DIM",
+      "x": 960.16,
+      "y": 414.732,
+      "target_x": 905.16,
+      "target_y": 459.732,
+      "confidence": 0.95,
+      "source": "analysis"
+    },
+    {
+      "number": 5,
+      "text": "1363.4±1.2",
+      "type": "DIM",
+      "x": 850.16,
+      "y": 453.464,
+      "target_x": 905.16,
+      "target_y": 498.464,
+      "confidence": 0.95,
+      "source": "analysis"
+    },
+    {
+      "number": 6,
+      "text": "Ø28±0.065",
+      "type": "DIA",
+      "x": 602.86,
+      "y": 973.8199999999999,
+      "target_x": 547.86,
+      "target_y": 1018.8199999999999,
+      "confidence": 0.95,
+      "source": "analysis"
+    },
+    {
+      "number": 7,
+      "text": "Ø28±0.065",
+      "type": "DIA",
+      "x": 1484.2,
+      "y": 990.6600000000001,
+      "target_x": 1429.2,
+      "target_y": 1035.66,
+      "confidence": 0.95,
+      "source": "analysis"
+    },
+    {
+      "number": 8,
+      "text": "28",
+      "type": "DIM",
+      "x": 1122.136,
+      "y": 1116.9599999999998,
+      "target_x": 1067.136,
+      "target_y": 1161.9599999999998,
+      "confidence": 0.95,
+      "source": "analysis"
+    },
+    {
+      "number": 9,
+      "text": "80±0.3",
+      "type": "DIM",
+      "x": 459.94000000000005,
+      "y": 1159.06,
+      "target_x": 404.94000000000005,
+      "target_y": 1204.06,
+      "confidence": 0.95,
+      "source": "analysis"
+    }
+  ],
+  "count": 9,
+  "cached": true,
+  "drawing_id": "004038be-0c91-410f-9b8b-25bfb62d5c35"
+}

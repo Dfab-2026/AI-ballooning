@@ -1,0 +1,72 @@
+{
+  "project_id": "3902eb46-a4c7-4e89-b4e8-0dc375162fde",
+  "project_name": "Drawing Ballooning Project",
+  "drawings": [
+    {
+      "drawing_id": "dcf865bf-1e73-49ad-a2db-b60ed7583df2",
+      "project_id": "3902eb46-a4c7-4e89-b4e8-0dc375162fde",
+      "source_filename": "DFSSPL-DWRL-0050_manipulator_arm_assembly_.pdf",
+      "page_index": 0,
+      "page_number": 1,
+      "source_pages": 6,
+      "drawing_number": "DFSSPL-DWRL-0050_manipulator_arm_assembly_ · Sheet 1",
+      "preview_url": "/preview/dcf865bf-1e73-49ad-a2db-b60ed7583df2",
+      "status": "uploaded"
+    },
+    {
+      "drawing_id": "bc8b2fba-db87-4100-a701-f0d180718ad2",
+      "project_id": "3902eb46-a4c7-4e89-b4e8-0dc375162fde",
+      "source_filename": "DFSSPL-DWRL-0050_manipulator_arm_assembly_.pdf",
+      "page_index": 1,
+      "page_number": 2,
+      "source_pages": 6,
+      "drawing_number": "DFSSPL-DWRL-0050_manipulator_arm_assembly_ · Sheet 2",
+      "preview_url": "/preview/bc8b2fba-db87-4100-a701-f0d180718ad2",
+      "status": "uploaded"
+    },
+    {
+      "drawing_id": "a2f54a22-f0cc-40d1-82b8-b21f5aa5cc5e",
+      "project_id": "3902eb46-a4c7-4e89-b4e8-0dc375162fde",
+      "source_filename": "DFSSPL-DWRL-0050_manipulator_arm_assembly_.pdf",
+      "page_index": 2,
+      "page_number": 3,
+      "source_pages": 6,
+      "drawing_number": "DFSSPL-DWRL-0050_manipulator_arm_assembly_ · Sheet 3",
+      "preview_url": "/preview/a2f54a22-f0cc-40d1-82b8-b21f5aa5cc5e",
+      "status": "uploaded"
+    },
+    {
+      "drawing_id": "a0b303ca-5fa7-4dd1-a25a-c7d356737837",
+      "project_id": "3902eb46-a4c7-4e89-b4e8-0dc375162fde",
+      "source_filename": "DFSSPL-DWRL-0050_manipulator_arm_assembly_.pdf",
+      "page_index": 3,
+      "page_number": 4,
+      "source_pages": 6,
+      "drawing_number": "DFSSPL-DWRL-0050_manipulator_arm_assembly_ · Sheet 4",
+      "preview_url": "/preview/a0b303ca-5fa7-4dd1-a25a-c7d356737837",
+      "status": "uploaded"
+    },
+    {
+      "drawing_id": "7f95ee9b-4dbd-47d3-9b81-f94889ce0c79",
+      "project_id": "3902eb46-a4c7-4e89-b4e8-0dc375162fde",
+      "source_filename": "DFSSPL-DWRL-0050_manipulator_arm_assembly_.pdf",
+      "page_index": 4,
+      "page_number": 5,
+      "source_pages": 6,
+      "drawing_number": "DFSSPL-DWRL-0050_manipulator_arm_assembly_ · Sheet 5",
+      "preview_url": "/preview/7f95ee9b-4dbd-47d3-9b81-f94889ce0c79",
+      "status": "uploaded"
+    },
+    {
+      "drawing_id": "60405cff-3ff8-4e2f-baeb-e06c0aaae7b6",
+      "project_id": "3902eb46-a4c7-4e89-b4e8-0dc375162fde",
+      "source_filename": "DFSSPL-DWRL-0050_manipulator_arm_assembly_.pdf",
+      "page_index": 5,
+      "page_number": 6,
+      "source_pages": 6,
+      "drawing_number": "DFSSPL-DWRL-0050_manipulator_arm_assembly_ · Sheet 6",
+      "preview_url": "/preview/60405cff-3ff8-4e2f-baeb-e06c0aaae7b6",
+      "status": "uploaded"
+    }
+  ]
+}

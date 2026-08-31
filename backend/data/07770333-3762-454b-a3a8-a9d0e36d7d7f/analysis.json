@@ -1,0 +1,20 @@
+{
+  "drawing_id": "07770333-3762-454b-a3a8-a9d0e36d7d7f",
+  "drawing_number": "TEST-001",
+  "part_name": "Test Part",
+  "customer": "",
+  "revision": "A",
+  "engine": "analysis",
+  "model": null,
+  "characteristics": [
+    {
+      "text": "Ø10±0.1",
+      "type": "DIA",
+      "center_x": 500,
+      "center_y": 500,
+      "confidence": 0.99
+    }
+  ],
+  "count": 1,
+  "cached": false
+}

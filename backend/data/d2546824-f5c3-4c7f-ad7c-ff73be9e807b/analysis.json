@@ -1,0 +1,141 @@
+{
+  "drawing_id": "d2546824-f5c3-4c7f-ad7c-ff73be9e807b",
+  "drawing_number": "DFSSPL-DWRL-0050",
+  "engine": "gemini",
+  "model": "gemini-3.6-flash",
+  "characteristics": [
+    {
+      "number": 1,
+      "text": "Ø56±0.08",
+      "type": "DIA",
+      "x": 598.096,
+      "y": 187.39200000000002,
+      "target_x": 543.096,
+      "target_y": 232.39200000000002,
+      "confidence": 0.98,
+      "source": "gemini"
+    },
+    {
+      "number": 2,
+      "text": "Ø36±0.08",
+      "type": "DIA",
+      "x": 209.83,
+      "y": 221.072,
+      "target_x": 154.83,
+      "target_y": 266.072,
+      "confidence": 0.98,
+      "source": "gemini"
+    },
+    {
+      "number": 3,
+      "text": "Ø28±0.065",
+      "type": "DIA",
+      "x": 1443.706,
+      "y": 231.176,
+      "target_x": 1388.706,
+      "target_y": 276.176,
+      "confidence": 0.98,
+      "source": "gemini"
+    },
+    {
+      "number": 4,
+      "text": "Ø40±0.08",
+      "type": "DIA",
+      "x": 1793.86,
+      "y": 231.176,
+      "target_x": 1738.86,
+      "target_y": 276.176,
+      "confidence": 0.98,
+      "source": "gemini"
+    },
+    {
+      "number": 5,
+      "text": "Ø56±0.08",
+      "type": "DIA",
+      "x": 381.334,
+      "y": 672.384,
+      "target_x": 326.334,
+      "target_y": 717.384,
+      "confidence": 0.98,
+      "source": "gemini"
+    },
+    {
+      "number": 6,
+      "text": "Ø40±0.08",
+      "type": "DIA",
+      "x": 1617.592,
+      "y": 694.276,
+      "target_x": 1562.592,
+      "target_y": 739.276,
+      "confidence": 0.98,
+      "source": "gemini"
+    },
+    {
+      "number": 7,
+      "text": "Ø36±0.08",
+      "type": "DIA",
+      "x": 381.334,
+      "y": 721.22,
+      "target_x": 326.334,
+      "target_y": 766.22,
+      "confidence": 0.98,
+      "source": "gemini"
+    },
+    {
+      "number": 8,
+      "text": "Ø28±0.065",
+      "type": "DIA",
+      "x": 1512.356,
+      "y": 736.3760000000001,
+      "target_x": 1567.356,
+      "target_y": 781.3760000000001,
+      "confidence": 0.98,
+      "source": "gemini"
+    },
+    {
+      "number": 9,
+      "text": "25±0.2",
+      "type": "DIM",
+      "x": 1460.3799999999999,
+      "y": 862.676,
+      "target_x": 1405.3799999999999,
+      "target_y": 907.676,
+      "confidence": 0.98,
+      "source": "gemini"
+    },
+    {
+      "number": 10,
+      "text": "3±0.1",
+      "type": "DIM",
+      "x": 1791.478,
+      "y": 892.988,
+      "target_x": 1736.478,
+      "target_y": 937.988,
+      "confidence": 0.98,
+      "source": "gemini"
+    },
+    {
+      "number": 11,
+      "text": "74±0.3",
+      "type": "DIM",
+      "x": 552.838,
+      "y": 928.352,
+      "target_x": 497.83799999999997,
+      "target_y": 973.352,
+      "confidence": 0.98,
+      "source": "gemini"
+    },
+    {
+      "number": 12,
+      "text": "36±0.08",
+      "type": "DIM",
+      "x": 1641.412,
+      "y": 968.7679999999999,
+      "target_x": 1586.412,
+      "target_y": 1013.7679999999999,
+      "confidence": 0.98,
+      "source": "gemini"
+    }
+  ],
+  "count": 12
+}
