@@ -20,6 +20,7 @@ from .services.pdf_processor import export_ballooned_pdf, page_count, render_pag
 from .services.gemini_analyzer import analyze_with_gemini, analyze_batch_with_gemini
 
 BASE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+ROOT = os.path.dirname(BASE)
 
 # Runtime storage policy:
 # - Local development: backend/data
@@ -36,7 +37,7 @@ for _folder in (DATA, PROJECTS, LEARNING):
 
 # .env is only a local-development convenience. Vercel values come from Project Environment Variables.
 if not os.getenv('VERCEL'):
-    load_dotenv(os.path.join(BASE, '.env'))
+    load_dotenv(os.path.join(ROOT, '.env'))
 
 app = FastAPI(title='InspectBalloon API', version='0.5.0')
 app.add_middleware(CORSMiddleware, allow_origins=['*'], allow_methods=['*'], allow_headers=['*'])
@@ -291,14 +292,11 @@ def _finalize_analysis_result(drawing_id: str, analysis: dict, cached: bool = Fa
 
 
 def _inspection_template_path() -> str:
-    # Vercel bundles the deployment asset beside api/index.py; local development
-    # continues to use backend/templates.
-    if os.getenv('VERCEL') or os.path.abspath(os.getcwd()).startswith('/var/task'):
-        root = os.path.dirname(BASE)
-        bundled = os.path.join(root, 'api', 'assets', 'final_inspection_template.xlsx')
-        if os.path.exists(bundled):
-            return bundled
-    return os.path.join(BASE, 'templates', 'final_inspection_template.xlsx')
+    # One canonical template path for both local development and Vercel.
+    template = os.path.join(ROOT, 'api', 'assets', 'final_inspection_template.xlsx')
+    if not os.path.exists(template):
+        raise HTTPException(500, 'Inspection report template is missing from api/assets')
+    return template
 
 
 def _write_inspection_sheet(ws, report: InspectionReportPayload, rows: list[InspectionRow], page_no: int, total_pages: int) -> None:

@@ -1,9 +1,8 @@
-"""Vercel FastAPI entrypoint for DFAB Engineering Drawing Inspection.
+"""Single Vercel FastAPI entrypoint.
 
-Vercel sends requests under /api/* to this file. The existing backend keeps
-its local-development routes without an /api prefix, so we include its router
-under /api here. This avoids ASGI mount/path-prefix mismatches on Vercel while
-preserving the backend endpoints unchanged for local development.
+Vercel routes /api/* to api/index.py. The application routes must therefore
+include the /api prefix. We reuse the tested backend router and add that prefix
+once here, while local development can still run backend.app.core:app directly.
 """
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -25,11 +24,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# FastAPI's router can be included with a prefix. This creates real routes such
-# as /api/health, /api/upload-batch, /api/analyze-batch, etc. rather than
-# mounting a second ASGI app and depending on root_path/path stripping.
+# Creates /api/health, /api/upload-batch, /api/analyze-batch, etc.
 app.include_router(backend_app.router, prefix="/api")
-
 
 @app.get("/api")
 def api_root():
