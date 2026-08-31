@@ -16,3 +16,8 @@ venv/
 
 dist/
 build/
+
+backend/data/
+data/
+__pycache__/
+*.pyc
