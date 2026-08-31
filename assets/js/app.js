@@ -105,8 +105,8 @@ async function startAnalysis(){
     $('analysisProgressDetail').textContent=`0 completed · ${total} remaining`;
     $('batchProgress').textContent=`${total} drawing${total!==1?'s':''} prepared.`;
 
-    let completed=0,successful=0,failed=0,cachedCount=0,quotaStopped=false;
-    const batchSize=2;
+    let completed=0,successful=0,failed=0,cachedCount=0;
+    const workerCount=Math.min(3,total);
     const updateBatchProgress=()=>{
       const pct=total?Math.round(completed/total*100):0;
       $('analysisProgressText').textContent=`${completed} / ${total}`;
@@ -114,62 +114,79 @@ async function startAnalysis(){
       $('analysisProgressFill').style.width=pct+'%';
       $('progressBar').style.width=(25+pct*.65)+'%';
       $('analysisProgressDetail').textContent=`${successful} ready · ${failed} unavailable · ${Math.max(0,total-completed)} remaining${cachedCount?` · ${cachedCount} cached`:''}`;
-      $('processingText').textContent=completed<total?`Analyzing ${Math.min(completed+1,total)} of ${total} drawings…`:`Analysis complete for ${total} drawing${total!==1?'s':''}.`;
+      $('processingText').textContent=completed<total?`Analyzing drawings… ${completed} of ${total} complete`:`Analysis complete for ${total} drawing${total!==1?'s':''}.`;
     };
 
-    for(let start=0;start<total;start+=batchSize){
-      if(quotaStopped)break;
-      const group=drawings.slice(start,start+batchSize);
-      $('processingText').textContent=`Analyzing ${start+1}–${start+group.length} of ${total} drawings…`;
-      let payload={};
+    const fetchJsonWithTimeout=async(url,options={},timeoutMs=90000)=>{
+      const controller=new AbortController();
+      const timer=setTimeout(()=>controller.abort(),timeoutMs);
       try{
-        const r=await fetch(`${API}/analyze-batch`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({drawing_ids:group.map(d=>d.drawing_id),force:false})});
-        payload=await r.json().catch(()=>({}));
-        if(!r.ok)throw new Error(cleanAnalysisError(payload.detail||`Analysis failed (${r.status})`));
-      }catch(err){
-        const msg=cleanAnalysisError(err.message||'Analysis failed');
-        group.forEach(d=>{d.error=msg;d.status='error';failed++;completed++});
-        if(/quota|RESOURCE_EXHAUSTED|429/i.test(msg))quotaStopped=true;
-        updateBatchProgress();
-        continue;
-      }
+        const r=await fetch(url,{...options,signal:controller.signal});
+        const payload=await r.json().catch(()=>({}));
+        return {r,payload};
+      }finally{clearTimeout(timer)}
+    };
 
-      const results=Array.isArray(payload.results)?payload.results:[];
-      group.forEach((d,i)=>{
-        const result=results[i];
-        if(result?.ok){
-          d.drawing_number=result.drawing_number||d.drawing_number;
-          d.part_name=result.part_name||d.part_name||'';
-          d.customer=result.customer||result.company_name||d.customer||'';
-          d.company_name=result.company_name||d.company_name||'';
-          d.material=result.material||d.material||'';
-          d.scale=result.scale||d.scale||'';
-          d.sheet_number=result.sheet_number||d.sheet_number||'';
-          d.project_name=result.project_name||d.project_name||'';
-          d.po_number=result.po_number||d.po_number||'';
-          d.drawn_by=result.drawn_by||d.drawn_by||'';
-          d.checked_by=result.checked_by||d.checked_by||'';
-          d.approved_by=result.approved_by||d.approved_by||'';
-          d.revision=result.revision||d.revision||'';
-          d.drawing_date=result.drawing_date||d.drawing_date||'';
-          d.quantity=result.quantity||d.quantity||'';
-          d.balloons=(result.characteristics||[]).map(normalizeBalloon);
-          d.originalBalloons=JSON.parse(JSON.stringify(d.balloons));
-          d.status='analyzed';d.error=null;successful++;
-          if(result.cached)cachedCount++;
-        }else{
-          const msg=cleanAnalysisError(result?.detail||'Analysis returned no result for this drawing.');
-          d.error=msg;d.status='error';failed++;
-          if(/quota|RESOURCE_EXHAUSTED|429/i.test(msg))quotaStopped=true;
+    const applyAnalysis=(d,result)=>{
+      d.drawing_number=result.drawing_number||d.drawing_number;
+      d.part_name=result.part_name||d.part_name||'';
+      d.customer=result.customer||result.company_name||d.customer||'';
+      d.company_name=result.company_name||d.company_name||'';
+      d.material=result.material||d.material||'';
+      d.scale=result.scale||d.scale||'';
+      d.sheet_number=result.sheet_number||d.sheet_number||'';
+      d.project_name=result.project_name||d.project_name||'';
+      d.po_number=result.po_number||d.po_number||'';
+      d.drawn_by=result.drawn_by||d.drawn_by||'';
+      d.checked_by=result.checked_by||d.checked_by||'';
+      d.approved_by=result.approved_by||d.approved_by||'';
+      d.revision=result.revision||d.revision||'';
+      d.drawing_date=result.drawing_date||d.drawing_date||'';
+      d.quantity=result.quantity||d.quantity||'';
+      d.balloons=(result.characteristics||[]).map(normalizeBalloon);
+      d.originalBalloons=JSON.parse(JSON.stringify(d.balloons));
+      d.status='analyzed';d.error=null;
+    };
+
+    const analyzeOne=async(d,index)=>{
+      $('processingText').textContent=`Analyzing drawing ${index+1} of ${total}…`;
+      let lastMessage='Analysis failed';
+      for(let attempt=0;attempt<2;attempt++){
+        try{
+          const {r,payload}=await fetchJsonWithTimeout(`${API}/analyze-ai/${d.drawing_id}`,{method:'POST'},90000);
+          if(r.ok){
+            applyAnalysis(d,payload);
+            successful++;
+            if(payload.cached)cachedCount++;
+            completed++;updateBatchProgress();return;
+          }
+          lastMessage=cleanAnalysisError(payload.detail||`Analysis failed (${r.status})`);
+          // Do not repeatedly retry hard quota/key/input failures.
+          if(r.status===429||r.status===400||r.status===401||r.status===403)break;
+          if(attempt===0)await new Promise(resolve=>setTimeout(resolve,1200));
+        }catch(err){
+          lastMessage=err?.name==='AbortError'?'Analysis timed out for this drawing.':cleanAnalysisError(err.message||'Analysis failed');
+          if(attempt===0)await new Promise(resolve=>setTimeout(resolve,1200));
         }
-        completed++;
-      });
-      updateBatchProgress();
-    }
+      }
+      d.error=lastMessage;d.status='error';failed++;completed++;updateBatchProgress();
+    };
+
+    // Small worker pool = much faster than serial processing, while every drawing
+    // remains isolated so one bad page cannot cancel the other five.
+    let nextIndex=0;
+    const worker=async()=>{
+      while(true){
+        const index=nextIndex++;
+        if(index>=total)return;
+        await analyzeOne(drawings[index],index);
+      }
+    };
+    await Promise.all(Array.from({length:workerCount},()=>worker()));
 
     setProgress(2,'Preparing the review workspace…');
     $('progressBar').style.width='100%';
-    $('batchProgress').textContent=`${successful} of ${total} drawings ready${cachedCount?` · ${cachedCount} cached`:''}${quotaStopped?' · analysis limit reached':''}.`;
+    $('batchProgress').textContent=`${successful} of ${total} drawings ready${cachedCount?` · ${cachedCount} cached`:''}${failed?` · ${failed} need retry`:''}.`;
 
     const first=drawings.findIndex(d=>d.balloons.length);
     if(first<0)throw new Error(drawings.find(d=>d.error)?.error||'No balloonable inspection characteristics were returned.');

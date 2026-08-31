@@ -134,11 +134,11 @@ def _balloon_offset(tx: float, ty: float, width: int, height: int, occupied: lis
 def _prepare_image(path: str):
     with Image.open(path) as source:
         source.load(); width,height=source.size
-        max_dim=max(1200,min(int(os.getenv('GEMINI_ANALYSIS_MAX_DIM','2000')),3000))
+        max_dim=max(1200,min(int(os.getenv('GEMINI_ANALYSIS_MAX_DIM','1600')),3000))
         img=source.convert('RGB')
         if max(img.size)>max_dim:
             img.thumbnail((max_dim,max_dim),Image.Resampling.LANCZOS)
-        buf=BytesIO(); img.save(buf,format='JPEG',quality=86,optimize=True)
+        buf=BytesIO(); img.save(buf,format='JPEG',quality=80,optimize=True)
         return buf.getvalue(), width, height
 
 
@@ -155,7 +155,7 @@ def _retry_after_seconds(exc: Exception) -> int:
 def _call_model(client, models, contents, schema):
     from google.genai import types
     last_error=None
-    max_retries=max(0,min(int(os.getenv('ANALYSIS_TRANSIENT_RETRIES','1')),2))
+    max_retries=max(0,min(int(os.getenv('ANALYSIS_TRANSIENT_RETRIES','2')),2))
     for model in models:
         for attempt in range(max_retries+1):
             try:

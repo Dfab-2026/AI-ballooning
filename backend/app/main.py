@@ -14,12 +14,16 @@ from dotenv import load_dotenv
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from .services.pdf_processor import export_ballooned_pdf, page_count, render_page
 from .services.gemini_analyzer import analyze_with_gemini, analyze_batch_with_gemini
 
 BASE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+PROJECT_ROOT = os.path.dirname(BASE)
+FRONTEND_DIR = os.path.join(PROJECT_ROOT, 'frontend')
+FRONTEND_ASSETS = os.path.join(FRONTEND_DIR, 'assets')
 
 # Runtime storage policy:
 # - Local development: backend/data
@@ -38,8 +42,27 @@ for _folder in (DATA, PROJECTS, LEARNING):
 if not os.getenv('VERCEL'):
     load_dotenv(os.path.join(BASE, '.env'))
 
-app = FastAPI(title='InspectBalloon API', version='0.5.0')
+app = FastAPI(title='InspectBalloon API', version='0.7.0')
 app.add_middleware(CORSMiddleware, allow_origins=['*'], allow_methods=['*'], allow_headers=['*'])
+
+# Local convenience: the Python backend also serves the plain HTML frontend.
+# This makes one command enough: npm run dev OR python -m uvicorn backend.app.main:app --reload
+if os.path.isdir(FRONTEND_ASSETS):
+    app.mount('/assets', StaticFiles(directory=FRONTEND_ASSETS), name='frontend-assets')
+
+@app.get('/')
+def frontend_home():
+    index_path = os.path.join(FRONTEND_DIR, 'index.html')
+    if os.path.exists(index_path):
+        return FileResponse(index_path, media_type='text/html')
+    return {'ok': True, 'service': 'InspectBalloon API'}
+
+@app.get('/favicon.ico')
+def frontend_favicon():
+    icon = os.path.join(FRONTEND_ASSETS, 'img', 'dfab-favicon.png')
+    if os.path.exists(icon):
+        return FileResponse(icon, media_type='image/png')
+    raise HTTPException(404, 'Favicon not found')
 
 
 class Balloon(BaseModel):
@@ -408,6 +431,8 @@ def health():
         'analysis_configured': bool(os.getenv('GEMINI_API_KEY') or os.getenv('GOOGLE_API_KEY')),
         'analysis_model_configured': bool(os.getenv('GEMINI_MODEL', '')),
         'learning_examples': learned,
+        'runtime_storage': 'temporary' if (os.getenv('VERCEL') or DATA.startswith(tempfile.gettempdir())) else 'local',
+        'fast_analysis': True,
     }
 
 
@@ -496,40 +521,42 @@ def analyze_ai(drawing_id: str, force: bool = False):
 
 @app.post('/analyze-batch')
 def analyze_batch(payload: BatchAnalyzePayload):
-    ids = [x for x in payload.drawing_ids if x][:4]
+    # Attempt every supplied drawing. Older builds truncated this list to four,
+    # which could leave a six-drawing upload partially analysed.
+    ids = [x for x in payload.drawing_ids if x][:24]
     if not ids:
         raise HTTPException(400, 'No drawings supplied')
-    results = [None] * len(ids)
-    uncached = []
-    uncached_positions = []
-    for i, drawing_id in enumerate(ids):
-        if not payload.force:
-            cached = _cached_analysis(drawing_id)
-            if cached:
-                results[i] = {**cached, 'ok': True, 'cached': True}
-                continue
-        preview = os.path.join(DATA, drawing_id, 'preview.png')
-        if not os.path.exists(preview):
-            results[i] = {'drawing_id': drawing_id, 'ok': False, 'detail': 'Drawing not found'}
-            continue
-        uncached.append(preview); uncached_positions.append((i, drawing_id))
-    if uncached:
+
+    workers = max(1, min(int(os.getenv('GEMINI_PARALLEL_WORKERS', '3')), 4, len(ids)))
+    result_by_id = {}
+
+    def analyze_one(drawing_id: str):
         try:
-            analyses = analyze_batch_with_gemini(uncached)
-            for (pos, drawing_id), analysis in zip(uncached_positions, analyses):
-                try:
-                    results[pos] = {**_finalize_analysis_result(drawing_id, analysis), 'ok': True, 'cached': False}
-                except HTTPException as exc:
-                    results[pos] = {'drawing_id': drawing_id, 'ok': False, 'detail': str(exc.detail)}
+            result = analyze_ai(drawing_id, force=payload.force)
+            return {**result, 'ok': True, 'cached': bool(result.get('cached', False))}
+        except HTTPException as exc:
+            return {'drawing_id': drawing_id, 'ok': False, 'detail': str(exc.detail), 'status_code': exc.status_code}
         except Exception as exc:
-            text = str(exc)
-            status = 429 if ('429' in text or 'RESOURCE_EXHAUSTED' in text) else 502
-            detail = 'Analysis quota is temporarily exhausted. Cached results were preserved; no completed analysis was lost.' if status == 429 else f'Analysis failed: {text}'
-            # Return cached items plus one clear batch-level error for uncached items.
-            for pos, drawing_id in uncached_positions:
-                if results[pos] is None:
-                    results[pos] = {'drawing_id': drawing_id, 'ok': False, 'detail': detail, 'status_code': status}
-    return {'results': results, 'total': len(ids), 'successful': sum(1 for r in results if r and r.get('ok')), 'cached': sum(1 for r in results if r and r.get('cached'))}
+            return {'drawing_id': drawing_id, 'ok': False, 'detail': str(exc), 'status_code': 502}
+
+    # Independent requests stop one malformed/slow drawing from cancelling its neighbours.
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        futures = {pool.submit(analyze_one, drawing_id): drawing_id for drawing_id in ids}
+        for future in as_completed(futures):
+            drawing_id = futures[future]
+            try:
+                result_by_id[drawing_id] = future.result()
+            except Exception as exc:
+                result_by_id[drawing_id] = {'drawing_id': drawing_id, 'ok': False, 'detail': str(exc), 'status_code': 502}
+
+    results = [result_by_id.get(drawing_id, {'drawing_id': drawing_id, 'ok': False, 'detail': 'Analysis did not complete'}) for drawing_id in ids]
+    return {
+        'results': results,
+        'total': len(ids),
+        'successful': sum(1 for r in results if r.get('ok')),
+        'cached': sum(1 for r in results if r.get('cached')),
+        'parallel_workers': workers,
+    }
 
 
 @app.post('/analyze-project/{project_id}')
