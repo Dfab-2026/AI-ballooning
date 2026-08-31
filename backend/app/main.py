@@ -13,22 +13,43 @@ from dotenv import load_dotenv
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from .services.pdf_processor import export_ballooned_pdf, page_count, render_page
 from .services.gemini_analyzer import analyze_with_gemini, analyze_batch_with_gemini
 
-BASE = os.path.dirname(os.path.dirname(__file__))
-DATA = os.path.join(BASE, 'data')
+BASE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+IS_VERCEL = bool(os.getenv('VERCEL'))
+
+# Vercel's deployed application directory (/var/task) is read-only. All files
+# created while a request is running must therefore live under /tmp. Local
+# development keeps the existing backend/data layout.
+if IS_VERCEL:
+    DATA = os.path.join('/tmp', 'ballooning_data')
+else:
+    DATA = os.path.join(BASE, 'data')
+
 PROJECTS = os.path.join(DATA, 'projects')
 LEARNING = os.path.join(DATA, 'learning')
-os.makedirs(DATA, exist_ok=True)
-os.makedirs(PROJECTS, exist_ok=True)
-os.makedirs(LEARNING, exist_ok=True)
-load_dotenv(os.path.join(BASE, '.env'))
+for runtime_dir in (DATA, PROJECTS, LEARNING):
+    os.makedirs(runtime_dir, exist_ok=True)
 
-app = FastAPI(title='InspectBalloon API', version='0.5.0')
+# Local development reads backend/.env. On Vercel the API key must be supplied
+# through Project Settings -> Environment Variables, so no .env file is needed.
+if not IS_VERCEL:
+    load_dotenv(os.path.join(BASE, '.env'))
+
+app = FastAPI(title='DFAB Engineering Drawing Inspection API', version='0.6.0')
 app.add_middleware(CORSMiddleware, allow_origins=['*'], allow_methods=['*'], allow_headers=['*'])
+
+# The Vercel deployment uses `backend` as the project Root Directory. A copy of
+# the production frontend is bundled in backend/site so the API and UI share the
+# same origin and no localhost URL is required in production.
+SITE = os.path.join(BASE, 'site')
+ASSETS = os.path.join(SITE, 'assets')
+if os.path.isdir(ASSETS):
+    app.mount('/assets', StaticFiles(directory=ASSETS), name='assets')
 
 
 class Balloon(BaseModel):
@@ -374,6 +395,27 @@ def _inspection_filename(report: InspectionReportPayload, fallback: str) -> str:
     return _safe_name(report.drawing_number, fallback) + '_inspection_report.xlsx'
 
 
+@app.get('/')
+def frontend_home():
+    index_path = os.path.join(SITE, 'index.html')
+    if not os.path.exists(index_path):
+        return {'ok': True, 'service': 'DFAB Engineering Drawing Inspection API'}
+    return FileResponse(index_path, media_type='text/html')
+
+
+@app.get('/favicon.ico')
+def favicon_ico():
+    icon = os.path.join(ASSETS, 'img', 'dfab-favicon.png')
+    if not os.path.exists(icon):
+        raise HTTPException(404, 'Favicon not found')
+    return FileResponse(icon, media_type='image/png')
+
+
+@app.get('/favicon.png')
+def favicon_png():
+    return favicon_ico()
+
+
 @app.get('/health')
 def health():
     learning_path = os.path.join(LEARNING, 'corrections.jsonl')
@@ -390,6 +432,7 @@ def health():
         'analysis_configured': bool(os.getenv('GEMINI_API_KEY') or os.getenv('GOOGLE_API_KEY')),
         'analysis_model_configured': bool(os.getenv('GEMINI_MODEL', '')),
         'learning_examples': learned,
+        'runtime_storage': 'temporary' if IS_VERCEL else 'local',
     }
 
 

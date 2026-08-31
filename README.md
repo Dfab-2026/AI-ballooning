@@ -66,3 +66,14 @@ Open `http://localhost:5500`.
 - Copy `backend/.env.example` to `backend/.env` locally, then add your own key.
 - Do not commit `node_modules`, Python caches, generated analysis cache, project runtime data, or local editor files.
 - If a real key was ever committed previously, revoke/rotate it before using the repository again.
+
+## Vercel deployment (configured)
+This package is configured for a **single Vercel deployment** with `backend` as the Vercel **Root Directory**.
+
+1. In Vercel Project Settings, set **Root Directory** to `backend`.
+2. Add `GEMINI_API_KEY` under **Settings → Environment Variables** (Production/Preview as needed). Never commit the real key.
+3. Redeploy. Vercel serves the bundled UI from `/` and the FastAPI endpoints from the same origin.
+4. On Vercel, generated uploads, previews, PDFs, Excel files, manifests, and analysis cache are written under `/tmp/ballooning_data` because `/var/task` is read-only.
+
+### Storage note
+Vercel `/tmp` storage is ephemeral. The upload → analyze → review → download workflow works within the active serverless instance, but long-term project history is not guaranteed. Persistent project history should later be moved to object storage/database (for example Vercel Blob/S3 + a database).
