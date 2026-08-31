@@ -11,6 +11,8 @@ function showError(msg){$('uploadError').textContent=msg;$('uploadError').classL
 function snapshot(){undoStack.push(JSON.stringify(balloons));if(undoStack.length>40)undoStack.shift()}
 function escapeHtml(s){return String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))}
 function normalizeBalloon(b){return{number:Number(b.number)||1,text:b.text||'',description:b.description||'',x:Number(b.x)||80,y:Number(b.y)||80,target_x:Number(b.target_x??b.x)||80,target_y:Number(b.target_y??b.y)||80,type:b.type||guessType(b.text),confidence:Number(b.confidence)||null,source:b.source||''}}
+function resequenceBalloons(list=balloons){list.forEach((b,i)=>b.number=i+1);return list}
+function normalizedExportBalloons(list){return resequenceBalloons(JSON.parse(JSON.stringify(list||[])))}
 function guessType(t=''){if(/[Ø⌀]/.test(t))return'DIA';if(/^R/i.test(t))return'RAD';if(/°/.test(t))return'ANG';if(/[±+\-]/.test(t))return'TOL';return'DIM'}
 
 async function health(){try{const r=await fetch(API+'/health');if(!r.ok)throw 0;const j=await r.json();$('healthDot').classList.add('ok');$('healthText').textContent=j.analysis_configured?`Analysis ready · ${j.learning_examples||0} learned reviews`:'Analysis engine needs configuration'}catch{$('healthDot').classList.remove('ok');$('healthText').textContent='Analysis engine offline'}}
@@ -298,9 +300,9 @@ function centerSelected(){if(selected===null)return;const b=balloons[selected],s
 function setMode(m){mode=m;document.querySelectorAll('.rail-btn[data-tool]').forEach(x=>x.classList.toggle('active',x.dataset.tool===m));$('addBtn').classList.toggle('active',m==='add')}
 $('addBtn').onclick=()=>{setMode('add');toast('Click directly on the missed characteristic')};
 $('deleteBtn').onclick=removeSelected;
-function removeSelected(){if(selected===null)return toast('Select a balloon first');snapshot();const n=balloons[selected].number;balloons.splice(selected,1);selected=null;render();toast(`Balloon ${n} removed`)}
+function removeSelected(){if(selected===null)return toast('Select a balloon first');snapshot();const n=balloons[selected].number;balloons.splice(selected,1);resequenceBalloons();selected=null;render();saveCurrentState();toast(`Balloon ${n} removed · sequence updated`)}
 document.addEventListener('keydown',e=>{if(e.key==='Delete'&&!$('editorView').classList.contains('hidden'))removeSelected()});
-$('renumberBtn').onclick=()=>{snapshot();balloons.sort((a,b)=>a.target_y-b.target_y||a.target_x-b.target_x).forEach((b,i)=>b.number=i+1);selected=null;render();toast('Balloons renumbered')};
+$('renumberBtn').onclick=()=>{snapshot();balloons.sort((a,b)=>a.target_y-b.target_y||a.target_x-b.target_x);resequenceBalloons();selected=null;render();saveCurrentState();toast('Balloons renumbered')};
 $('undoBtn').onclick=()=>{if(!undoStack.length)return toast('Nothing to undo');balloons=JSON.parse(undoStack.pop());selected=null;render();toast('Last change undone')};
 $('applyPropsBtn').onclick=()=>{if(selected===null)return;snapshot();const b=balloons[selected];b.number=Math.max(1,parseInt($('propNumber').value)||b.number);b.text=$('propText').value;b.x=Number($('propX').value)||b.x;b.y=Number($('propY').value)||b.y;b.type=guessType(b.text);render();toast('Correction applied')};
 
@@ -364,7 +366,7 @@ function buildReports(){
     part_name:d.part_name||'',customer:d.customer||d.company_name||'',revision:d.revision||'00',
     report_date:normalizeDrawingDate(d.drawing_date),inspected_qty:d.quantity||'',total_qty:d.quantity||'',
     remarks:[d.material?`Material: ${d.material}`:'',d.scale?`Scale: ${d.scale}`:'',d.project_name?`Project: ${d.project_name}`:'',d.po_number?`PO: ${d.po_number}`:''].filter(Boolean).join(' · ')||'Dimensions verified as per drawing',inspected_by:'',qc_incharge:'',approved_by:'',
-    rows:(d.balloons||[]).slice().sort((a,b)=>Number(a.number)-Number(b.number)).map(b=>({number:Number(b.number)||1,description:characteristicDescription(b),dimension:b.text||'',instrument:suggestedInstrument(b),reading1:'',reading2:''}))
+    rows:normalizedExportBalloons(d.balloons||[]).map(b=>({number:Number(b.number)||1,description:characteristicDescription(b),dimension:b.text||'',instrument:suggestedInstrument(b),reading1:'',reading2:''}))
   }));
 }
 function saveReportForm(){
@@ -393,8 +395,8 @@ function renderReportEditor(){
   $('reportFooterStatus').textContent=`${r.drawing_number||`Drawing ${reportIndex+1}`} · PDF + editable Excel`;
 }
 function reportPayload(r){return {...r,rows:r.rows.map(x=>({...x,number:Number(x.number)||1}))}}
-function drawingExportPayload(d){return{balloons:d.balloons||[],original_balloons:d.originalBalloons||[],learn:true,project_name:$('projectTitle').textContent,drawing_number:d.drawing_number||''}}
-function projectDrawingPayload(){saveCurrentState();return drawings.filter(d=>d.balloons?.length).map(d=>({drawing_id:d.drawing_id,balloons:d.balloons,original_balloons:d.originalBalloons||[],drawing_number:d.drawing_number||''}))}
+function drawingExportPayload(d){const finalBalloons=normalizedExportBalloons(d.balloons);d.balloons=JSON.parse(JSON.stringify(finalBalloons));return{balloons:finalBalloons,original_balloons:d.originalBalloons||[],learn:true,project_name:$('projectTitle').textContent,drawing_number:d.drawing_number||''}}
+function projectDrawingPayload(){saveCurrentState();return drawings.filter(d=>d.balloons?.length).map(d=>{const finalBalloons=normalizedExportBalloons(d.balloons);d.balloons=JSON.parse(JSON.stringify(finalBalloons));return{drawing_id:d.drawing_id,balloons:finalBalloons,original_balloons:d.originalBalloons||[],drawing_number:d.drawing_number||''}})}
 async function downloadCurrentDrawing(){saveReportForm();const d=drawings[reportIndex];const res=await fetch(`${API}/export-one/${d.drawing_id}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(drawingExportPayload(d))});if(!res.ok){const j=await res.json().catch(()=>({}));throw new Error(j.detail||'Drawing PDF export failed')}downloadBlob(await res.blob(),`${(d.drawing_number||'drawing').replace(/[^a-z0-9_-]+/gi,'_')}_ballooned.pdf`)}
 async function downloadAllDrawings(){saveReportForm();const res=await fetch(`${API}/export-project/${projectId}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({project_name:$('projectTitle').textContent,learn:true,drawings:projectDrawingPayload()})});if(!res.ok){const j=await res.json().catch(()=>({}));throw new Error(j.detail||'Drawing ZIP export failed')}downloadBlob(await res.blob(),`${($('projectTitle').textContent||'drawings').replace(/[^a-z0-9_-]+/gi,'_')}_ballooned_drawings.zip`)}
 async function downloadCurrentExcel(){saveReportForm();const r=reports[reportIndex];const res=await fetch(`${API}/inspection-report/${r.drawing_id}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(reportPayload(r))});if(!res.ok){const j=await res.json().catch(()=>({}));throw new Error(j.detail||'Excel export failed')}downloadBlob(await res.blob(),`${(r.drawing_number||'drawing').replace(/[^a-z0-9_-]+/gi,'_')}_inspection_report.xlsx`)}

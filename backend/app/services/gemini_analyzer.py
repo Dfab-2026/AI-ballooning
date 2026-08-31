@@ -82,7 +82,14 @@ Include when visibly present:
 
 Do NOT create characteristics from drawing number, revision, sheet number, scale, dates, quantities, material names, company/title-block administrative text, BOM item numbers, random standalone digits, or duplicate text belonging to the same characteristic.
 
-For each characteristic also return a short description based only on visible nearby feature context (for example Overall length, Hole diameter, Radius, Thread callout). If the feature name is not visible or inferable without guessing, use a generic type-based description. Return its exact visible text and the CENTER of the characteristic/callout in normalized coordinates where x=0 is left, x=1000 is right, y=0 is top, y=1000 is bottom. Use the location of the dimension/callout text itself, not the part geometry. Return each real characteristic once. Prefer precision over guessing.
+For each characteristic also return a short description based only on visible nearby feature context (for example Overall length, Hole diameter, Radius, Thread callout). If the feature name is not visible or inferable without guessing, use a generic type-based description. Return its exact visible text and the CENTER of the characteristic/callout in normalized coordinates where x=0 is left, x=1000 is right, y=0 is top, y=1000 is bottom. Use the location of the dimension/callout text itself, not the part geometry. Return each real characteristic once. STRICT BALLOON PLACEMENT RULES:
+- A balloon target MUST point to the visible dimension/callout text or its immediate leader/callout anchor, never to blank paper, title-block whitespace, borders, geometry with no dimension, logos, notes, or random areas.
+- Do not return an item if you cannot confidently locate the exact visible characteristic on the page.
+- Exclude general notes, welding/process instructions, BOM rows, part labels, view labels, section labels, zone coordinates, page borders, title blocks and revision tables unless the text itself is an inspection characteristic.
+- Standalone numbers are NOT characteristics unless they are clearly part of a visible dimension/callout.
+- When uncertain, omit the candidate. Precision is more important than recall.
+
+Prefer precision over guessing.
 '''
 
 
@@ -180,8 +187,29 @@ def _call_model(client, models, contents, schema):
     raise RuntimeError(str(last_error) if last_error else 'Analysis service failed')
 
 
+def _looks_like_inspection_characteristic(c) -> bool:
+    text=(c.text or '').strip()
+    if not text:
+        return False
+    upper=text.upper()
+    admin_terms=('DRAWING NO','DRAWING NUMBER','DWG NO','REV','REVISION','SHEET','SCALE','DATE','QTY','QUANTITY','MATERIAL','DRAWN BY','CHECKED BY','APPROVED BY','CUSTOMER','PROJECT','PO NO','PART NAME','TITLE')
+    if any(term in upper for term in admin_terms):
+        return False
+    # Reject bare item/zone numbers and other common false positives.
+    if re.fullmatch(r'[A-Z]?\s*\d{1,4}[A-Z]?', upper):
+        return False
+    ctype=str(getattr(c,'type','OTHER')).upper()
+    if ctype in {'GD&T','SURFACE','DATUM','THREAD','HOLE'}:
+        return True
+    # Dimension-like text must visibly carry numeric/symbolic dimensional content.
+    has_number=bool(re.search(r'\d', text))
+    has_dim_symbol=bool(re.search(r'[Ø⌀±°]|\bR\s*\d|\bM\s*\d|\bTHRU\b|\bDEPTH\b|\bTYP\b|\bMAX\b|\bMIN\b', upper))
+    has_tolerance=bool(re.search(r'[+\-]\s*\d|\d\s*[-–]\s*\d', text))
+    return has_number and (ctype in {'DIM','DIA','RAD','ANG','TOL'} or has_dim_symbol or has_tolerance)
+
 def _to_output(parsed, width:int, height:int):
-    detected=[c for c in parsed.characteristics if c.confidence>=0.55 and c.text.strip()]
+    min_conf=max(0.55,min(float(os.getenv('GEMINI_MIN_CONFIDENCE','0.68')),0.95))
+    detected=[c for c in parsed.characteristics if c.confidence>=min_conf and _looks_like_inspection_characteristic(c)]
     detected.sort(key=lambda c:(c.center_y,c.center_x))
     output=[]; occupied=[]; seen=set()
     for c in detected:

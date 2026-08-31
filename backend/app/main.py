@@ -78,6 +78,25 @@ class Balloon(BaseModel):
     description: str = ''
 
 
+
+
+def _renumber_balloons(items):
+    """Return deep-copied balloons numbered continuously from 1..N."""
+    result=[]
+    for index, item in enumerate(items or [], start=1):
+        clone=item.model_copy(deep=True) if hasattr(item, 'model_copy') else copy.deepcopy(item)
+        clone.number=index
+        result.append(clone)
+    return result
+
+def _renumber_rows(items):
+    result=[]
+    for index, item in enumerate(items or [], start=1):
+        clone=item.model_copy(deep=True) if hasattr(item, 'model_copy') else copy.deepcopy(item)
+        clone.number=index
+        result.append(clone)
+    return result
+
 class LearnPayload(BaseModel):
     original_balloons: List[Balloon]
     final_balloons: List[Balloon]
@@ -693,7 +712,8 @@ def final_package(project_id: str, payload: FinalPackagePayload):
             pdf_name = safe + '_ballooned.pdf'
             pdf_path = os.path.join(pair_dir, pdf_name)
             src = os.path.join(folder, source_files[0])
-            export_ballooned_pdf(src, pdf_path, [b.model_dump() for b in drawing.balloons], int(meta.get('page_index', 0)))
+            final_balloons = _renumber_balloons(drawing.balloons)
+            export_ballooned_pdf(src, pdf_path, [b.model_dump() for b in final_balloons], int(meta.get('page_index', 0)))
 
             xlsx_name = safe + '_inspection_report.xlsx'
             xlsx_path = os.path.join(pair_dir, xlsx_name)
@@ -706,7 +726,7 @@ def final_package(project_id: str, payload: FinalPackagePayload):
             if payload.learn:
                 _save_learning(drawing_id, LearnPayload(
                     original_balloons=drawing.original_balloons,
-                    final_balloons=drawing.balloons,
+                    final_balloons=final_balloons,
                     project_name=payload.project_name,
                     drawing_number=display_number,
                 ))
@@ -726,11 +746,12 @@ def export_one(drawing_id: str, payload: DrawingExportPayload):
         raise HTTPException(404, 'Source drawing missing')
     src = os.path.join(folder, files[0])
     out = os.path.join(folder, 'ballooned.pdf')
-    export_ballooned_pdf(src, out, [b.model_dump() for b in payload.balloons], int(meta.get('page_index', 0)))
+    final_balloons = _renumber_balloons(payload.balloons)
+    export_ballooned_pdf(src, out, [b.model_dump() for b in final_balloons], int(meta.get('page_index', 0)))
     if payload.learn:
         _save_learning(drawing_id, LearnPayload(
             original_balloons=payload.original_balloons,
-            final_balloons=payload.balloons,
+            final_balloons=final_balloons,
             project_name=payload.project_name,
             drawing_number=payload.drawing_number or meta.get('drawing_number', ''),
         ))
@@ -763,13 +784,14 @@ def export_project(project_id: str, payload: ProjectExportPayload):
             display_number = item.drawing_number or meta.get('drawing_number') or f'Drawing_{index:02d}'
             filename = _safe_name(display_number, f'Drawing_{index:02d}') + '_ballooned.pdf'
             out = os.path.join(export_dir, filename)
-            export_ballooned_pdf(src, out, [b.model_dump() for b in item.balloons], int(meta.get('page_index', 0)))
+            final_balloons = _renumber_balloons(item.balloons)
+            export_ballooned_pdf(src, out, [b.model_dump() for b in final_balloons], int(meta.get('page_index', 0)))
             zf.write(out, arcname=filename)
             exported += 1
             if payload.learn:
                 _save_learning(drawing_id, LearnPayload(
                     original_balloons=item.original_balloons,
-                    final_balloons=item.balloons,
+                    final_balloons=final_balloons,
                     project_name=payload.project_name,
                     drawing_number=display_number,
                 ))
