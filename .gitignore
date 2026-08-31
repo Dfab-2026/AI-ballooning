@@ -24,3 +24,7 @@ Thumbs.db
 *.log
 *.tmp
 *.zip
+backend/.env
+.env
+.env.*
+!.env.example

@@ -23,7 +23,7 @@
 cd "D:\DFAB PROJECT\ballooning\backend"
 venv\Scripts\activate
 python -m pip install -r requirements.txt
-python -m uvicorn app.main:app --reload
+python -m uvicorn app.core:app --reload
 ```
 
 ## Run frontend
@@ -71,7 +71,7 @@ Open `http://localhost:5500`.
 
 This repository now deploys from the repository root (`./`). Do not set Vercel Root Directory to `backend`.
 
-- `app/main.py` is the single Vercel entrypoint and imports the real application from `backend/app/main.py`.
+- `app/main.py` is the single Vercel entrypoint and imports the real application from `backend/app/core.py`.
 - Runtime/generated files use `/tmp/ballooning_data` automatically on Vercel; `/var/task` is never used for writes.
 - The frontend is served by the FastAPI app from `frontend/`, so the site and API use one deployment/domain.
 - `GEMINI_API_KEY` must be configured in Vercel Project Settings -> Environment Variables and must never be committed.

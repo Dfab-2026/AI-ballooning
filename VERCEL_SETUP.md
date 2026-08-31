@@ -1,29 +1,30 @@
-# Vercel deployment — canonical setup
+# DFAB Ballooning — Vercel deployment
 
-This repository intentionally uses **zero `vercel.json` configuration**.
-Current Vercel Python/FastAPI routing auto-detects `api/index.py` as the ASGI function.
-The static UI is served from repository-root `index.html` + `assets/`.
+This package is intentionally structured as a static frontend plus one FastAPI function.
 
-## Vercel project settings
-- Framework / preset: Other or FastAPI (auto-detection is fine)
-- Root Directory: `./` (repository root)
-- Build Command: leave empty/default
-- Output Directory: leave empty/default
-- Install Command: leave empty/default
-- Environment variable required: `GEMINI_API_KEY`
-- Optional: `GEMINI_MODEL` and `GEMINI_FALLBACK_MODELS`
+- `/` is the root `index.html` frontend.
+- `/assets/*` are static frontend assets.
+- `/api/*` is handled by `api/index.py`.
+- `api/index.py` includes the existing backend router with the `/api` prefix.
+- Runtime-generated files use `/tmp/ballooning_data` on Vercel.
+- `vercel.json` sets `framework: null`, so a FastAPI preset selected in the Vercel dashboard cannot take over `/`.
 
-## Routes
-- UI: `/`
-- API health: `/api/health`
-- All other backend endpoints: `/api/...`
+## Vercel settings
 
-## Storage
-Vercel runtime writes only to `/tmp/ballooning_data`. Never write generated files under `/var/task`.
-`/tmp` is ephemeral; persistent project history requires external object/database storage.
+Use the repository root as the Root Directory: `./`
 
-## Before deploying
-1. Ensure `vercel.json` does **not** exist.
-2. Ensure `api/index.py` exists.
-3. Ensure root `index.html`, `assets/`, `requirements.txt`, and `.python-version` exist.
-4. Push the latest commit to GitHub, then deploy that commit.
+Do not set a custom Build Command, Output Directory, or Install Command.
+
+Add this Environment Variable:
+
+`GEMINI_API_KEY=<your rotated valid key>`
+
+## After deployment
+
+Test in this order:
+
+1. `https://YOUR-DOMAIN.vercel.app/` — must show the DFAB UI.
+2. `https://YOUR-DOMAIN.vercel.app/api` — must return API JSON.
+3. `https://YOUR-DOMAIN.vercel.app/api/health` — must return the backend health JSON.
+
+Do not add `functions.includeFiles` to `vercel.json`.
