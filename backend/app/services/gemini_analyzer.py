@@ -82,10 +82,7 @@ Include when visibly present:
 
 Do NOT create characteristics from drawing number, revision, sheet number, scale, dates, quantities, material names, company/title-block administrative text, BOM item numbers, random standalone digits, or duplicate text belonging to the same characteristic.
 
-For each characteristic also return a short description based only on visible nearby feature context (for example Overall length, Hole diameter, Radius, Thread callout). If the feature name is not visible or inferable without guessing, use a generic type-based description. Return its exact visible text and a SAFE BALLOON ARROW ANCHOR in normalized coordinates where x=0 is left, x=1000 is right, y=0 is top, y=1000 is bottom. The anchor should be on the characteristic's nearby dimension line, extension line, or leader segment immediately beside the dimension text, with a small clear gap from all text glyphs. Do not place the anchor inside or on top of numbers, tolerance symbols, arrows, or lettering. Return each real characteristic once. STRICT BALLOON PLACEMENT RULES:
-- A balloon target MUST be a visible dimension/leader-line anchor immediately associated with the characteristic, never blank paper, title-block whitespace, borders, unrelated geometry, logos, notes, or random areas.
-- Prefer the dimension line, extension line, or existing measurement leader immediately NEXT TO the measurement. The green inspection arrow must point beside the measurement, never through its characters. The application will place the numbered circle ABOVE and BESIDE this anchor, with a long diagonal leader and visible white clearance around the measurement.
-- Do not return an item if you cannot confidently locate the exact visible characteristic on the page.
+For each characteristic also return a short description based only on visible nearby feature context (for example Overall length, Hole diameter, Radius, Thread callout). If the feature name is not visible or inferable without guessing, use a generic type-based description. Return its exact visible text and a balloon target in normalized coordinates where x=0 is left, x=1000 is right, y=0 is top, y=1000 is bottom. For balloon placement, the arrow tip must finish in CLEAN WHITE SPACE immediately ABOVE the printed measurement/callout text, with a visible gap from the tops of the letters/numbers. Do NOT put the arrow tip on the measurement characters, tolerance characters, symbols, dimension line, extension line, feature outline, or any other drawing stroke. Treat every digit, decimal point, tolerance, diameter/radius symbol, GD&T text, note, word, and nearby CAD line as a protected NO-TOUCH zone. Prefer a target roughly 8-14 image pixels above the visual top of the measurement text, centered near the characteristic so the arrow clearly indicates that measurement without touching it. If the space directly above is occupied by geometry or another annotation, use the nearest clear white-space position above-left or above-right; only if no safe upper space exists may you use clear white space below the measurement. The leader must remain in open white space and must not cross any text. Return each real characteristic once.
 - Exclude general notes, welding/process instructions, BOM rows, part labels, view labels, section labels, zone coordinates, page borders, title blocks and revision tables unless the text itself is an inspection characteristic.
 - Standalone numbers are NOT characteristics unless they are clearly part of a visible dimension/callout.
 - When uncertain, omit the candidate. Precision is more important than recall.
@@ -130,53 +127,19 @@ def _learning_context(limit: int = 8) -> str:
 
 
 def _balloon_offset(tx: float, ty: float, width: int, height: int, occupied: list[tuple[float, float]]) -> tuple[float, float]:
-    """Place balloons cleanly without forcing every leader to the same length.
-
-    Start with the approved normal geometry. If that location would interfere with an
-    existing balloon/leader, vary the position and increase only the vertical offset,
-    by at most about 0.5 cm (28 px at the preview scale).
-    """
-    margin = 34.0
-    preferred = 1 if (width - tx) >= tx else -1
-    base_x = 190.0
-    base_y = 128.0
-    max_extra_height = 28.0  # ~0.5 cm maximum additional height
-    y_direction = 1.0 if ty < 86 else -1.0
-
-    def point_segment_distance(px, py, ax, ay, bx, by):
-        abx, aby = bx - ax, by - ay
-        denom = abx * abx + aby * aby
-        if denom <= 1e-9:
-            return ((px-ax)**2 + (py-ay)**2) ** 0.5
-        t = max(0.0, min(1.0, ((px-ax)*abx + (py-ay)*aby) / denom))
-        qx, qy = ax + t*abx, ay + t*aby
-        return ((px-qx)**2 + (py-qy)**2) ** 0.5
-
+    """Conventional default balloon placement with a normal circle and ~1 cm leader."""
+    margin = 28.0
+    centre_distance = 57.0
+    directions = ((0.75, -0.66), (-0.75, -0.66), (0.75, 0.66), (-0.75, 0.66))
     candidates = []
-    for extra_h in (0.0, 10.0, 20.0, max_extra_height):
-        for extra_x in (0.0, 18.0, 36.0):
-            for side in (preferred, -preferred):
-                candidates.append((
-                    tx + side * (base_x + extra_x),
-                    ty + y_direction * (base_y + extra_h),
-                ))
-
-    for x, y in candidates:
-        x = min(max(margin, x), max(margin, width - margin))
-        y = min(max(margin, y), max(margin, height - margin))
-        if abs(x - tx) < 150 or abs(y - ty) < 88:
-            continue
-        if any((x-ox)**2 + (y-oy)**2 <= 88**2 for ox, oy in occupied):
-            continue
-        if any(point_segment_distance(ox, oy, x, y, tx, ty) < 44 for ox, oy in occupied):
-            continue
-        return x, y
-
-    # Last resort: stay inside the sheet and use no more than +0.5 cm height.
-    x = tx + preferred * base_x
-    y = ty + y_direction * (base_y + max_extra_height)
-    return (min(max(margin, x), max(margin, width-margin)),
-            min(max(margin, y), max(margin, height-margin)))
+    for dx, dy in directions:
+        x = min(max(margin, tx + dx * centre_distance), max(margin, width - margin))
+        y = min(max(margin, ty + dy * centre_distance), max(margin, height - margin))
+        collision = sum(1 for ox, oy in occupied if (x-ox)**2 + (y-oy)**2 < 64**2)
+        dist = ((x-tx)**2 + (y-ty)**2) ** 0.5
+        candidates.append((collision * 1000 + abs(dist-centre_distance), x, y))
+    candidates.sort(key=lambda item: item[0])
+    return candidates[0][1], candidates[0][2]
 
 
 def _prepare_image(path: str):
@@ -258,7 +221,65 @@ def _looks_like_inspection_characteristic(c) -> bool:
     has_tolerance=bool(re.search(r'[+\-]\s*\d|\d\s*[-–]\s*\d', text))
     return has_number and (ctype in {'DIM','DIA','RAD','ANG','TOL'} or has_dim_symbol or has_tolerance)
 
-def _to_output(parsed, width:int, height:int):
+def _snap_target_to_line(image_path: str, tx: float, ty: float) -> tuple[float, float]:
+    """Snap an AI target away from glyphs and onto a nearby straight drawing line.
+
+    Engineering dimension/extension/leader lines have long, straight dark runs. Text
+    strokes are short and irregular. We search only a small neighborhood around the
+    model-provided target and prefer pixels supported by a straight run, so the
+    target coordinate identifies the correct engineering line, while the renderer leaves a small visual gap before that line and never covers a measurement character.
+    """
+    try:
+        with Image.open(image_path) as src:
+            gray = src.convert('L')
+            w, h = gray.size
+            px = gray.load()
+            cx = int(round(max(0, min(w - 1, tx))))
+            cy = int(round(max(0, min(h - 1, ty))))
+            radius = max(24, min(52, int(round(min(w, h) * 0.025))))
+            # Slightly generous threshold catches anti-aliased CAD lines.
+            threshold = 205
+            directions = ((1,0),(0,1),(1,1),(1,-1))
+
+            def run_support(x, y, dx, dy, half=20):
+                dark = 0
+                longest = cur = 0
+                for k in range(-half, half + 1):
+                    xx, yy = x + dx*k, y + dy*k
+                    if 0 <= xx < w and 0 <= yy < h and px[xx, yy] < threshold:
+                        dark += 1; cur += 1; longest = max(longest, cur)
+                    else:
+                        cur = 0
+                return dark, longest
+
+            best = None
+            step = 1 if radius <= 36 else 2
+            for y in range(max(1, cy-radius), min(h-1, cy+radius+1), step):
+                for x in range(max(1, cx-radius), min(w-1, cx+radius+1), step):
+                    if px[x, y] >= threshold:
+                        continue
+                    d2 = (x-cx)*(x-cx) + (y-cy)*(y-cy)
+                    if d2 > radius*radius:
+                        continue
+                    line_strength = 0
+                    longest = 0
+                    for dx,dy in directions:
+                        dark, run = run_support(x,y,dx,dy)
+                        line_strength = max(line_strength, dark)
+                        longest = max(longest, run)
+                    # Require a genuinely line-like run. This rejects most glyph strokes.
+                    if longest < 10 and line_strength < 15:
+                        continue
+                    dist = d2 ** 0.5
+                    score = longest * 3.2 + line_strength * 0.8 - dist * 0.55
+                    if best is None or score > best[0]:
+                        best = (score, float(x), float(y))
+            return (best[1], best[2]) if best else (tx, ty)
+    except Exception:
+        return tx, ty
+
+
+def _to_output(parsed, width:int, height:int, image_path: str | None = None):
     min_conf=max(0.55,min(float(os.getenv('GEMINI_MIN_CONFIDENCE','0.68')),0.95))
     detected=[c for c in parsed.characteristics if c.confidence>=min_conf and _looks_like_inspection_characteristic(c)]
     detected.sort(key=lambda c:(c.center_y,c.center_x))
@@ -266,6 +287,12 @@ def _to_output(parsed, width:int, height:int):
     for c in detected:
         nx=min(1000,max(0,float(c.center_x))); ny=min(1000,max(0,float(c.center_y)))
         tx=nx/1000*width; ty=ny/1000*height
+        # The model target is intentionally a clear white-space point above the
+        # measurement text. Do not snap it back onto CAD linework. A small extra
+        # upward clearance keeps the arrowhead visibly off the glyphs even when
+        # the model chooses the text boundary too closely.
+        safe_clearance = max(6.0, min(12.0, min(width, height) * 0.006))
+        ty = max(4.0, ty - safe_clearance)
         dedupe=(c.text.strip().upper(),round(tx/18),round(ty/18))
         if dedupe in seen: continue
         seen.add(dedupe)
@@ -297,10 +324,10 @@ def _client_configs():
 def analyze_with_gemini(image_path: str) -> dict:
     from google.genai import types
     client_configs=_client_configs(); data,width,height=_prepare_image(image_path)
-    contents=[types.Part.from_bytes(data=data,mime_type='image/jpeg'), BASE_PROMPT+_learning_context()]
+    contents=[types.Part.from_bytes(data=data,mime_type='image/jpeg'), BASE_PROMPT]
     text,used_model,used_key=_call_model(client_configs,contents,GeminiDrawingAnalysis)
     parsed=GeminiDrawingAnalysis.model_validate_json(text)
-    return {'drawing_number':(parsed.drawing_number or '').strip() or None,'part_name':(parsed.part_name or '').strip() or None,'customer':(parsed.customer or '').strip() or None,'company_name':(parsed.company_name or '').strip() or None,'material':(parsed.material or '').strip() or None,'scale':(parsed.scale or '').strip() or None,'sheet_number':(parsed.sheet_number or '').strip() or None,'project_name':(parsed.project_name or '').strip() or None,'po_number':(parsed.po_number or '').strip() or None,'drawn_by':(parsed.drawn_by or '').strip() or None,'checked_by':(parsed.checked_by or '').strip() or None,'approved_by':(parsed.approved_by or '').strip() or None,'revision':(parsed.revision or '').strip() or None,'drawing_date':(parsed.drawing_date or '').strip() or None,'quantity':(parsed.quantity or '').strip() or None,'characteristics':_to_output(parsed,width,height),'model':used_model,'api_key_slot':used_key}
+    return {'drawing_number':(parsed.drawing_number or '').strip() or None,'part_name':(parsed.part_name or '').strip() or None,'customer':(parsed.customer or '').strip() or None,'company_name':(parsed.company_name or '').strip() or None,'material':(parsed.material or '').strip() or None,'scale':(parsed.scale or '').strip() or None,'sheet_number':(parsed.sheet_number or '').strip() or None,'project_name':(parsed.project_name or '').strip() or None,'po_number':(parsed.po_number or '').strip() or None,'drawn_by':(parsed.drawn_by or '').strip() or None,'checked_by':(parsed.checked_by or '').strip() or None,'approved_by':(parsed.approved_by or '').strip() or None,'revision':(parsed.revision or '').strip() or None,'drawing_date':(parsed.drawing_date or '').strip() or None,'quantity':(parsed.quantity or '').strip() or None,'characteristics':_to_output(parsed,width,height,image_path),'model':used_model,'api_key_slot':used_key}
 
 
 def analyze_batch_with_gemini(image_paths: List[str]) -> List[dict]:
@@ -308,7 +335,7 @@ def analyze_batch_with_gemini(image_paths: List[str]) -> List[dict]:
     if len(image_paths)==1: return [analyze_with_gemini(image_paths[0])]
     from google.genai import types
     client_configs=_client_configs(); prepared=[]; contents=[]
-    prompt=BASE_PROMPT+_learning_context()+f"\nThere are {len(image_paths)} drawings in this request. Return exactly one drawings[] entry for each, using drawing_index 1..{len(image_paths)} matching the labels."
+    prompt=BASE_PROMPT+f"\nThere are {len(image_paths)} drawings in this request. Return exactly one drawings[] entry for each, using drawing_index 1..{len(image_paths)} matching the labels."
     contents.append(prompt)
     for i,path in enumerate(image_paths,1):
         data,w,h=_prepare_image(path); prepared.append((w,h))
@@ -323,5 +350,5 @@ def analyze_batch_with_gemini(image_paths: List[str]) -> List[dict]:
         if d is None:
             results.append({'drawing_number':None,'part_name':None,'customer':None,'company_name':None,'material':None,'scale':None,'sheet_number':None,'project_name':None,'po_number':None,'drawn_by':None,'checked_by':None,'approved_by':None,'revision':None,'drawing_date':None,'quantity':None,'characteristics':[],'model':used_model,'api_key_slot':used_key,'error':'No analysis returned for this drawing'})
         else:
-            results.append({'drawing_number':(d.drawing_number or '').strip() or None,'part_name':(d.part_name or '').strip() or None,'customer':(d.customer or '').strip() or None,'company_name':(d.company_name or '').strip() or None,'material':(d.material or '').strip() or None,'scale':(d.scale or '').strip() or None,'sheet_number':(d.sheet_number or '').strip() or None,'project_name':(d.project_name or '').strip() or None,'po_number':(d.po_number or '').strip() or None,'drawn_by':(d.drawn_by or '').strip() or None,'checked_by':(d.checked_by or '').strip() or None,'approved_by':(d.approved_by or '').strip() or None,'revision':(d.revision or '').strip() or None,'drawing_date':(d.drawing_date or '').strip() or None,'quantity':(d.quantity or '').strip() or None,'characteristics':_to_output(d,w,h),'model':used_model,'api_key_slot':used_key})
+            results.append({'drawing_number':(d.drawing_number or '').strip() or None,'part_name':(d.part_name or '').strip() or None,'customer':(d.customer or '').strip() or None,'company_name':(d.company_name or '').strip() or None,'material':(d.material or '').strip() or None,'scale':(d.scale or '').strip() or None,'sheet_number':(d.sheet_number or '').strip() or None,'project_name':(d.project_name or '').strip() or None,'po_number':(d.po_number or '').strip() or None,'drawn_by':(d.drawn_by or '').strip() or None,'checked_by':(d.checked_by or '').strip() or None,'approved_by':(d.approved_by or '').strip() or None,'revision':(d.revision or '').strip() or None,'drawing_date':(d.drawing_date or '').strip() or None,'quantity':(d.quantity or '').strip() or None,'characteristics':_to_output(d,w,h,image_paths[i-1]),'model':used_model,'api_key_slot':used_key})
     return results

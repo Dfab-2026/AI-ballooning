@@ -20,12 +20,12 @@ health();
 
 const drop=$('dropZone');
 $('browseBtn').onclick=()=>{ $('fileInput').value=''; $('fileInput').click(); };
-$('fileInput').onchange=e=>setFiles([...e.target.files]);
+$('fileInput').onchange=e=>setFiles([...e.target.files],true);
 ['dragenter','dragover'].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.add('dragging')}));
 ['dragleave','drop'].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.remove('dragging')}));
 drop.addEventListener('drop',async e=>{
   const files=await collectDroppedFiles(e.dataTransfer);
-  setFiles(files);
+  setFiles(files,true);
 });
 drop.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' ')$('fileInput').click()});
 async function collectDroppedFiles(dataTransfer){
@@ -54,13 +54,35 @@ async function collectDroppedFiles(dataTransfer){
   }
   return out.length?out:[...(dataTransfer.files||[])];
 }
-function setFiles(files){
+function fileKey(f){return `${f.name}|${f.size}|${f.lastModified||0}`}
+function renderSelectedFiles(){
+  const box=$('fileSummary');
+  if(!selectedFiles.length){box.classList.add('hidden');box.innerHTML='';$('analyzeBtn').disabled=true;return}
+  const total=selectedFiles.reduce((n,f)=>n+f.size,0)/1024/1024;
+  box.classList.remove('hidden');
+  box.innerHTML=`<div class="selected-files-head"><b>${selectedFiles.length} source file${selectedFiles.length!==1?'s':''}</b><span>${total.toFixed(2)} MB</span></div><div class="selected-file-list">${selectedFiles.map((f,i)=>`<div class="selected-file-row"><span class="selected-file-type">${/\.pdf$/i.test(f.name)?'PDF':'IMG'}</span><span class="selected-file-name" title="${escapeHtml(f.name)}">${escapeHtml(f.name)}</span><button class="selected-file-remove" type="button" data-file-index="${i}" title="Remove ${escapeHtml(f.name)}" aria-label="Remove ${escapeHtml(f.name)}">×</button></div>`).join('')}</div>`;
+  box.querySelectorAll('.selected-file-remove').forEach(btn=>btn.onclick=e=>{e.preventDefault();e.stopPropagation();const i=Number(btn.dataset.fileIndex);selectedFiles.splice(i,1);renderSelectedFiles();});
+}
+function setFiles(files,append=true){
   const valid=files.filter(f=>['application/pdf','image/png','image/jpeg'].includes(f.type)||/\.(pdf|png|jpe?g)$/i.test(f.name));
   if(!valid.length){showError('Select PDF, PNG, JPG or JPEG engineering drawings.');return}
-  selectedFiles=valid;$('uploadError').classList.add('hidden');$('analyzeBtn').disabled=false;
-  const total=valid.reduce((n,f)=>n+f.size,0)/1024/1024;
-  $('fileSummary').classList.remove('hidden');
-  $('fileSummary').innerHTML=`<div><b>${valid.length} drawing file${valid.length>1?'s':''} selected</b><span>${total.toFixed(2)} MB total</span></div><div class="file-pills">${valid.slice(0,5).map(f=>`<span>${escapeHtml(f.name)}</span>`).join('')}${valid.length>5?`<span>+${valid.length-5} more</span>`:''}</div>`;
+  const base=append?selectedFiles:[];
+  const merged=[...base,...valid];
+  const seen=new Set();
+  selectedFiles=merged.filter(f=>{const k=fileKey(f);if(seen.has(k))return false;seen.add(k);return true});
+  $('uploadError').classList.add('hidden');
+  $('analyzeBtn').disabled=!selectedFiles.length;
+  renderSelectedFiles();
+}
+async function countExpandedDrawings(){
+  if(!selectedFiles.some(f=>/\.pdf$/i.test(f.name)))return selectedFiles.length;
+  const fd=new FormData();selectedFiles.forEach(f=>fd.append('files',f));
+  try{
+    const r=await fetch(API+'/drawing-count',{method:'POST',body:fd,cache:'no-store'});
+    if(!r.ok)throw 0;
+    const j=await r.json();
+    return Math.max(selectedFiles.length,Number(j.drawing_count)||selectedFiles.length);
+  }catch(_){return selectedFiles.length}
 }
 function setProgress(step,text=''){const widths=[25,70,100];$('progressBar').style.width=widths[step]+'%';document.querySelectorAll('.process-row').forEach((r,i)=>{r.classList.toggle('done',i<step);r.classList.toggle('active',i===step);r.querySelector('em').textContent=i<step?'Done':i===step?'•••':'Waiting'});$('processingText').textContent=text||['Splitting PDFs and preparing drawing previews…','Analyzing drawings and detecting inspection characteristics…','Building the interactive review queue…'][step]}
 
@@ -79,11 +101,13 @@ async function startAnalysis(){
     const hr=await fetch(API+'/health',{cache:'no-store'}).catch(()=>null);
     if(!hr||!hr.ok)throw new Error('Analysis API is unavailable.');
 
+    const uploadedCount=await countExpandedDrawings();
     switchView('processingView');
-    setProgress(0,'Preparing drawing set…');
-    $('analysisProgressText').textContent='0 / ?';
-    $('analysisCount').textContent='0 / ?';
-    $('analysisProgressDetail').textContent='Uploading and analysing the complete drawing set in one production-safe request…';
+    setProgress(0,`Preparing ${uploadedCount} uploaded drawing${uploadedCount!==1?'s':''}…`);
+    $('analysisProgressText').textContent=`0 / ${uploadedCount}`;
+    $('analysisCount').textContent=`0 / ${uploadedCount}`;
+    $('analysisProgressDetail').textContent=`Detected ${uploadedCount} drawing${uploadedCount!==1?'s':''} in the uploaded files · preparing all pages…`;
+    $('batchProgress').textContent=`${uploadedCount} drawing${uploadedCount!==1?'s':''} total · all will be analyzed in this run…`;
 
     const fd=new FormData();
     selectedFiles.forEach(f=>fd.append('files',f));
@@ -187,10 +211,22 @@ function updateCurrentReviewButton(){
   btn.textContent=d.reviewed?'✓ Reviewed':'Mark reviewed';
   btn.classList.toggle('reviewed',!!d.reviewed);
 }
+async function autoTrainReviewedDrawing(index){
+  const d=drawings[index];
+  if(!d||!d.reviewed||d.training||d.trained)return;
+  d.training=true;
+  try{
+    const finalBalloons=normalizedExportBalloons(d.balloons||[]);
+    const res=await fetch(`${API}/learn/${d.drawing_id}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({original_balloons:d.originalBalloons||[],final_balloons:finalBalloons,project_name:$('projectTitle').textContent||'',drawing_number:d.drawing_number||''})});
+    if(res.ok){d.trained=true;health();}
+  }catch(_){/* review must still work even if learning storage is unavailable */}
+  finally{d.training=false;}
+}
 function toggleDrawingReviewed(index){
   saveCurrentState();const d=drawings[index];if(!d)return;d.reviewed=!d.reviewed;
   renderDrawingNav();updateReviewProgress();if(index===currentIndex)updateCurrentReviewButton();
-  toast(d.reviewed?'Drawing reviewed':'Review mark removed');
+  if(d.reviewed)autoTrainReviewedDrawing(index);
+  toast(d.reviewed?'Drawing reviewed · corrections learned':'Review mark removed');
 }
 async function retryDrawingAnalysis(index){
   saveCurrentState();
@@ -246,7 +282,26 @@ function renderDrawingNav(){
 }
 function updateReviewProgress(){const reviewed=drawings.filter(d=>d.reviewed).length,total=drawings.length;$('reviewedText').textContent=`${reviewed} / ${total} reviewed`;$('reviewBar').style.width=(total?reviewed/total*100:0)+'%';const ready=total>0&&reviewed===total;$('nextBtn').disabled=!ready;$('nextBtn').title=ready?'Continue to the final inspection report templates':`Review all ${total} drawings to continue`;const allBtn=$('markAllReviewedBtn');if(allBtn){allBtn.textContent=ready?'↺ Clear':'✓ All';allBtn.classList.toggle('all-reviewed',ready);allBtn.title=ready?'Clear all reviewed marks':'Mark every drawing reviewed'}}
 
-$('panelToggle').onclick=()=>{$('searchInput').focus();toast('Characteristics panel is ready')};
+const workspaceGrid=document.querySelector('.workspace-grid');
+function setWorkspacePanel(panel,visible){
+  if(!workspaceGrid)return;
+  const classMap={tools:'hide-tools',drawings:'hide-drawings',inspect:'hide-inspect'};
+  const buttonMap={tools:'toggleToolsBtn',drawings:'toggleDrawingsBtn',inspect:'panelToggle'};
+  const cls=classMap[panel];
+  if(!cls)return;
+  workspaceGrid.classList.toggle(cls,!visible);
+  const btn=$(buttonMap[panel]);
+  if(btn){btn.classList.toggle('panel-hidden',!visible);btn.setAttribute('aria-pressed',String(visible));}
+  requestAnimationFrame(()=>{if(typeof fitView==='function')fitView()});
+}
+function toggleWorkspacePanel(panel){
+  const classMap={tools:'hide-tools',drawings:'hide-drawings',inspect:'hide-inspect'};
+  const cls=classMap[panel];
+  setWorkspacePanel(panel,workspaceGrid?.classList.contains(cls));
+}
+if($('toggleToolsBtn'))$('toggleToolsBtn').onclick=()=>toggleWorkspacePanel('tools');
+if($('toggleDrawingsBtn'))$('toggleDrawingsBtn').onclick=()=>toggleWorkspacePanel('drawings');
+if($('panelToggle'))$('panelToggle').onclick=()=>toggleWorkspacePanel('inspect');
 $('markReviewedBtn').onclick=()=>toggleDrawingReviewed(currentIndex);
 function setAllReviewed(value=true){
   saveCurrentState();
@@ -261,19 +316,24 @@ if($('markAllReviewedBtn'))$('markAllReviewedBtn').onclick=()=>{
 
 function clampDrawingPoint(p){return{x:Math.max(0,Math.min(naturalWidth,p.x)),y:Math.max(0,Math.min(naturalHeight,p.y))}}
 function leaderEndpoints(b){
-  const dx=b.target_x-b.x,dy=b.target_y-b.y,len=Math.hypot(dx,dy)||1,ux=dx/len,uy=dy/len;
-  // Preserve each balloon's saved/adaptive length instead of forcing equal leaders.
-  const balloonRadius=18,bodyGap=balloonRadius+1;
-  const targetGap=Math.min(34,Math.max(18,len*0.075));
   const safeMargin=22;
   const bx=Math.max(safeMargin,Math.min(naturalWidth-safeMargin,b.x));
   const by=Math.max(safeMargin,Math.min(naturalHeight-safeMargin,b.y));
-  const ddx=b.target_x-bx,ddy=b.target_y-by,dlen=Math.hypot(ddx,ddy)||1,dux=ddx/dlen,duy=ddy/dlen;
-  return{x1:bx+dux*bodyGap,y1:by+duy*bodyGap,x2:Math.max(2,Math.min(naturalWidth-2,b.target_x-dux*targetGap)),y2:Math.max(2,Math.min(naturalHeight-2,b.target_y-duy*targetGap))};
+  const dx=b.target_x-bx,dy=b.target_y-by,len=Math.hypot(dx,dy)||1,ux=dx/len,uy=dy/len;
+  // Keep the normal balloon size. Only the visible leader is shortened: ~1 cm.
+  const balloonRadius=18,bodyGap=balloonRadius+1;
+  // The circle is positioned about 1 cm of visible leader away from the target.
+  // target_x/target_y is already a protected white-space point above the
+  // measurement text. End exactly there so the arrow indicates the measurement
+  // while remaining visibly clear of letters, numbers and CAD lines.
+  const endGap=0;
+  const x1=bx+ux*bodyGap,y1=by+uy*bodyGap;
+  const x2=b.target_x-ux*endGap,y2=b.target_y-uy*endGap;
+  return{x1,y1,x2,y2};
 }
 
 function render(){
-  const svg=$('overlay');svg.innerHTML=`<defs><marker id="balloonArrowGreen" markerWidth="10" markerHeight="10" refX="9" refY="5" orient="auto" markerUnits="strokeWidth"><path d="M0,0 L10,5 L0,10 z" fill="#0b5d3b"/></marker><marker id="balloonArrowRed" markerWidth="10" markerHeight="10" refX="9" refY="5" orient="auto" markerUnits="strokeWidth"><path d="M0,0 L10,5 L0,10 z" fill="#ef4444"/></marker></defs>`;
+  const svg=$('overlay');svg.innerHTML=`<defs><marker id="balloonArrowGreen" markerWidth="7" markerHeight="7" refX="6.5" refY="3.5" orient="auto" markerUnits="strokeWidth"><path d="M0,0 L7,3.5 L0,7 z" fill="#0b5d3b"/></marker><marker id="balloonArrowRed" markerWidth="7" markerHeight="7" refX="6.5" refY="3.5" orient="auto" markerUnits="strokeWidth"><path d="M0,0 L7,3.5 L0,7 z" fill="#ef4444"/></marker></defs>`;
   balloons.forEach((b,i)=>{
     const g=document.createElementNS('http://www.w3.org/2000/svg','g');g.setAttribute('class','balloon'+(selected===i?' selected':''));g.dataset.index=i;
     const ep=leaderEndpoints(b);g.innerHTML=`<line class="leader" x1="${ep.x1}" y1="${ep.y1}" x2="${ep.x2}" y2="${ep.y2}" marker-end="url(#${selected===i?'balloonArrowRed':'balloonArrowGreen'})"/><circle class="target-handle" cx="${b.target_x}" cy="${b.target_y}" r="5"/><circle class="balloon-body" cx="${b.x}" cy="${b.y}" r="18"/><text x="${b.x}" y="${b.y}">${b.number}</text>`;
@@ -290,13 +350,18 @@ function render(){
 function updateOverlayOnly(i){const g=$('overlay').querySelector(`g[data-index="${i}"]`),b=balloons[i];if(!g)return;const line=g.querySelector('.leader'),ep=leaderEndpoints(b);line.setAttribute('x1',ep.x1);line.setAttribute('y1',ep.y1);line.setAttribute('x2',ep.x2);line.setAttribute('y2',ep.y2);const body=g.querySelector('.balloon-body'),target=g.querySelector('.target-handle');body.setAttribute('cx',b.x);body.setAttribute('cy',b.y);target.setAttribute('cx',b.target_x);target.setAttribute('cy',b.target_y);const t=g.querySelector('text');t.setAttribute('x',b.x);t.setAttribute('y',b.y)}
 function svgPoint(e){const rect=$('overlay').getBoundingClientRect(),sx=$('overlay').viewBox.baseVal.width/rect.width,sy=$('overlay').viewBox.baseVal.height/rect.height;return{x:(e.clientX-rect.left)*sx,y:(e.clientY-rect.top)*sy}}
 function manualBalloonPosition(p){
-  const margin=34,baseX=190,baseY=128,maxExtra=28; // height may grow by max ~0.5 cm only
-  const preferred=(naturalWidth-p.x)>=p.x?1:-1,yDir=p.y<86?1:-1,candidates=[];
-  [0,10,20,maxExtra].forEach(h=>[0,18,36].forEach(x=>[preferred,-preferred].forEach(side=>candidates.push({x:p.x+side*(baseX+x),y:p.y+yDir*(baseY+h)}))));
-  const segDist=(q,a,b)=>{const vx=b.x-a.x,vy=b.y-a.y,d=vx*vx+vy*vy||1,t=Math.max(0,Math.min(1,((q.x-a.x)*vx+(q.y-a.y)*vy)/d)),x=a.x+t*vx,y=a.y+t*vy;return Math.hypot(q.x-x,q.y-y)};
-  for(const c0 of candidates){const c={x:Math.max(margin,Math.min(naturalWidth-margin,c0.x)),y:Math.max(margin,Math.min(naturalHeight-margin,c0.y))};if(Math.abs(c.x-p.x)<150||Math.abs(c.y-p.y)<88)continue;if(balloons.some(b=>Math.hypot(c.x-b.x,c.y-b.y)<=88))continue;if(balloons.some(b=>segDist({x:b.x,y:b.y},c,p)<44))continue;return c}
-  return{x:Math.max(margin,Math.min(naturalWidth-margin,p.x+preferred*baseX)),y:Math.max(margin,Math.min(naturalHeight-margin,p.y+yDir*(baseY+maxExtra)))};
+  // Conventional default balloon: normal circle with ~1 cm leader.
+  const margin=24,centreDistance=57;
+  const dirs=[[.75,-.66],[-.75,-.66],[.75,.66],[-.75,.66]];
+  const candidates=dirs.map(([dx,dy])=>{
+    const c={x:Math.max(margin,Math.min(naturalWidth-margin,p.x+dx*centreDistance)),y:Math.max(margin,Math.min(naturalHeight-margin,p.y+dy*centreDistance))};
+    const collision=balloons.filter(b=>Math.hypot(c.x-b.x,c.y-b.y)<64).length;
+    return {c,score:collision*1000+Math.abs(Math.hypot(c.x-p.x,c.y-p.y)-centreDistance)};
+  });
+  candidates.sort((a,b)=>a.score-b.score);
+  return candidates[0]?.c||{x:Math.max(margin,Math.min(naturalWidth-margin,p.x+50)),y:Math.max(margin,Math.min(naturalHeight-margin,p.y-45))};
 }
+
 let stagePan=null;
 $('overlay').addEventListener('pointerdown',e=>{if(e.target!==$('overlay'))return;if(mode==='add'){snapshot();const p=clampDrawingPoint(svgPoint(e)),n=nextNumber(),pos=manualBalloonPosition(p);balloons.push({number:n,text:'Manual characteristic',x:pos.x,y:pos.y,target_x:p.x,target_y:p.y,type:'MAN',source:'manual'});selected=balloons.length-1;setMode('select');render();toast(`Balloon ${n} added`);return}const sc=$('stageScroll');stagePan={pointerId:e.pointerId,startX:e.clientX,startY:e.clientY,left:sc.scrollLeft,top:sc.scrollTop,moved:false};e.currentTarget.setPointerCapture?.(e.pointerId)});
 $('overlay').addEventListener('pointermove',e=>{if(!stagePan||stagePan.pointerId!==e.pointerId)return;const dx=e.clientX-stagePan.startX,dy=e.clientY-stagePan.startY;if(Math.abs(dx)+Math.abs(dy)>4)stagePan.moved=true;const sc=$('stageScroll');sc.scrollLeft=stagePan.left-dx;sc.scrollTop=stagePan.top-dy});

@@ -621,6 +621,32 @@ def health():
     }
 
 
+@app.post('/drawing-count')
+async def drawing_count(files: List[UploadFile] = File(...)):
+    """Return the expanded drawing/page count before analysis.
+
+    One PDF can contain many drawing sheets. The browser uses this preflight so the
+    processing screen shows 6 drawings for a six-page PDF instead of showing 1 file.
+    """
+    total = 0
+    details = []
+    tmp_root = tempfile.mkdtemp(prefix='balloon_count_')
+    try:
+        for index, file in enumerate(files):
+            ext = os.path.splitext(file.filename or '')[1].lower()
+            if ext not in ['.pdf', '.png', '.jpg', '.jpeg']:
+                continue
+            src = os.path.join(tmp_root, f'{index}{ext}')
+            with open(src, 'wb') as out:
+                shutil.copyfileobj(file.file, out)
+            count = max(1, int(page_count(src)))
+            total += count
+            details.append({'name': file.filename or f'drawing_{index+1}{ext}', 'drawings': count})
+        return {'drawing_count': total, 'files': details}
+    finally:
+        shutil.rmtree(tmp_root, ignore_errors=True)
+
+
 @app.post('/upload-batch')
 async def upload_batch(files: List[UploadFile] = File(...), project_name: str = Form('')):
     if not files:

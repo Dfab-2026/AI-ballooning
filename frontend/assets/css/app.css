@@ -1268,3 +1268,91 @@ body.add-balloon-mode #overlay{cursor:var(--d-cursor-final),default!important}
 .retry-analysis-btn{height:22px;min-width:44px;padding:0 6px;border:1px solid #f0b45a;border-radius:6px;background:#fff7e8;color:#9a5a00;font-size:7px;font-weight:800;cursor:pointer;line-height:1;}
 .retry-analysis-btn:hover{background:#ffedc8;border-color:#e49a2a}.retry-analysis-btn:disabled{opacity:.55;cursor:wait}
 .dark .retry-analysis-btn{background:#3a2d18;color:#ffd58b;border-color:#74552b}
+
+
+/* === 2026-09-01: compact 1.5 cm balloons + edge review dot + collapsible editor panels === */
+/* Review indicator is pinned to the card's inner right edge and never escapes the card. */
+.drawing-tab{
+  position:relative!important;
+  grid-template-columns:minmax(0,1fr) auto!important;
+  padding-right:34px!important;
+  overflow:hidden!important;
+}
+.review-dot{
+  position:absolute!important;
+  right:4px!important;
+  top:50%!important;
+  margin:0!important;
+  justify-self:auto!important;
+  align-self:auto!important;
+  transform:translateY(-50%)!important;
+  z-index:3!important;
+}
+.review-dot:hover{transform:translateY(-50%) scale(1.07)!important;}
+.retry-analysis-btn{margin-right:2px!important;}
+
+/* Canvas toolbar panel controls. Any side panel can be hidden to maximize drawing area. */
+.workspace-panel-toggles{display:flex;align-items:center;gap:4px;min-width:0}
+.side-toggle-btn{
+  height:27px;padding:0 7px;border:1px solid var(--line);border-radius:7px;
+  background:#fff;color:#617085;font-size:8px;font-weight:800;white-space:nowrap;
+}
+.side-toggle-btn:hover{border-color:rgba(var(--accent-rgb),.55);color:var(--blue);background:rgba(var(--accent-rgb),.05)}
+.side-toggle-btn.panel-hidden{background:rgba(var(--accent-rgb),.12);border-color:rgba(var(--accent-rgb),.4);color:var(--blue)}
+.dark .side-toggle-btn{background:#162a40;color:#d5e1eb;border-color:#38516a}
+.dark .side-toggle-btn.panel-hidden{background:#1b4160;color:#f2f8fc;border-color:#4d7395}
+
+/* These variables override all earlier responsive column declarations at the end of the cascade. */
+.editor-view .workspace-grid{
+  --tools-panel-width:62px;
+  --drawings-panel-width:210px;
+  --inspect-panel-width:310px;
+  grid-template-columns:var(--tools-panel-width) var(--drawings-panel-width) minmax(0,1fr) var(--inspect-panel-width)!important;
+  transition:grid-template-columns .16s ease;
+}
+.editor-view .workspace-grid.hide-tools{--tools-panel-width:0px}
+.editor-view .workspace-grid.hide-drawings{--drawings-panel-width:0px}
+.editor-view .workspace-grid.hide-inspect{--inspect-panel-width:0px}
+.editor-view .workspace-grid.hide-tools>.tool-rail,
+.editor-view .workspace-grid.hide-drawings>.drawing-dock,
+.editor-view .workspace-grid.hide-inspect>.inspect-panel{display:none!important}
+
+@media(max-width:1280px){
+  .editor-view .workspace-grid{--tools-panel-width:56px;--drawings-panel-width:180px;--inspect-panel-width:265px}
+  .side-toggle-btn{padding:0 6px;font-size:7px}
+}
+@media(max-width:1050px){
+  .editor-view .workspace-grid{--tools-panel-width:52px;--drawings-panel-width:158px;--inspect-panel-width:235px}
+  .workspace-panel-toggles{gap:3px}
+  .side-toggle-btn{padding:0 5px}
+}
+/* Keep each editor pane assigned to its own grid column so hiding one never shifts the others. */
+.editor-view .workspace-grid>.tool-rail{grid-column:1}
+.editor-view .workspace-grid>.drawing-dock{grid-column:2}
+.editor-view .workspace-grid>.canvas-panel{grid-column:3}
+.editor-view .workspace-grid>.inspect-panel{grid-column:4}
+
+
+/* === v1.7.0 compact safe balloons + in-card upload list === */
+.balloon text{font-size:10px!important;font-weight:800!important}
+.balloon .leader{stroke-width:1.35!important}
+.upload-file-summary{grid-column:1/-1!important;width:100%!important;margin:2px 0 0!important;padding:8px!important;background:rgba(255,255,255,.82)!important;border:1px solid var(--line)!important;border-radius:10px!important;text-align:left!important;max-height:126px;overflow:auto}
+.selected-files-head{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:0 2px 6px;font-size:9px;color:var(--text)}
+.selected-files-head span{font-size:8px;color:var(--muted)}
+.selected-file-list{display:grid;gap:5px}
+.selected-file-row{display:grid;grid-template-columns:34px minmax(0,1fr) 24px;align-items:center;gap:7px;min-height:30px;padding:4px 5px 4px 7px;border:1px solid #dfe7ef;border-radius:8px;background:#fff}
+.selected-file-type{display:grid;place-items:center;height:20px;border-radius:5px;background:#edf4ff;color:var(--blue);font-size:7px!important;font-weight:900}
+.selected-file-name{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#46576c!important;font-size:8px!important}
+.selected-file-remove{width:22px;height:22px;border:1px solid #dde5ee;border-radius:6px;background:#fff;color:#758499;font-size:16px;line-height:18px;display:grid;place-items:center;padding:0;cursor:pointer!important}
+.selected-file-remove:hover{border-color:#f3b2b2;background:#fff4f4;color:#c43b3b}
+.dark .upload-file-summary{background:#0d1b2a!important;border-color:#345069!important}.dark .selected-file-row{background:#132337;border-color:#30475f}.dark .selected-file-name{color:#dce9f5!important}.dark .selected-file-remove{background:#14263a;border-color:#38516a;color:#c3d1de}
+
+/* 2026-09-01 production visibility + compact safe balloon override */
+#fileSummary:not(.hidden){display:block!important;grid-column:1/-1!important;position:relative!important;z-index:3!important}
+.upload-file-summary{max-height:138px!important;overflow:auto!important}
+.balloon .balloon-body{stroke-width:1.5!important}
+.balloon text{font-size:9px!important;font-weight:800!important}
+.balloon .target-handle{opacity:0!important;pointer-events:stroke!important}
+
+/* Final balloon label visibility: keep normal circle, enlarge only the number. */
+.balloon text{font-size:13px!important;font-weight:950!important;dominant-baseline:middle;text-anchor:middle}

@@ -109,19 +109,22 @@ def export_ballooned_pdf(src: str, out: str, balloons, page_index: int = 0) -> N
             page_rect = page.rect
             x = min(max(r + 2, x), page_rect.width - r - 2)
             y = min(max(r + 2, y), page_rect.height - r - 2)
-            # Leave white clearance before the actual dimension/callout so neither
-            # the leader nor arrowhead touches measurement text or dimension lines.
+            # The target is protected white space above the measurement text, never on text or CAD linework.
+            # The arrowhead lands directly on that target line.
             dx, dy = tx-x, ty-y
             dist = math.hypot(dx, dy) or 1.0
             ux, uy = dx/dist, dy/dist
-            start_gap = min(r + 1.5, max(0.0, dist / 3.0))
-            target_gap = min(17.0, max(9.0, dist * 0.075))
+            start_gap = r + 1.0
             sx, sy = x + ux*start_gap, y + uy*start_gap
-            ex, ey = tx - ux*target_gap, ty - uy*target_gap
+            # Keep a small visible gap before the analyzer-selected line.
+            # Preview coordinates are rendered at 2x, so ~3.5 PDF points mirrors
+            # the ~7 px editor clearance without changing the leader size.
+            end_gap = 0.0
+            ex, ey = tx - ux*end_gap, ty - uy*end_gap
             page.draw_line((sx, sy), (ex, ey), color=(0.04, 0.36, 0.23), width=1.05)
-            # Arrowhead stops at the clearance endpoint, not on the measurement.
+            # Arrowhead points to the selected drawing/dimension line but stops just before it.
             ang = math.atan2(ey-sy, ex-sx)
-            ah = 5.0
+            ah = 3.8
             p1 = (ex-ah*math.cos(ang-0.55), ey-ah*math.sin(ang-0.55))
             p2 = (ex-ah*math.cos(ang+0.55), ey-ah*math.sin(ang+0.55))
             page.draw_line((ex, ey), p1, color=(0.04,0.36,0.23), width=1.05)
@@ -129,7 +132,7 @@ def export_ballooned_pdf(src: str, out: str, balloons, page_index: int = 0) -> N
             page.draw_circle((x, y), r, color=(0.04, 0.36, 0.23), fill=(1, 1, 1), width=1.2)
             label = str(b['number'])
             width = fitz.get_text_length(label, fontsize=8)
-            page.insert_text((x - width / 2, y + 2.8), label, fontsize=8, color=(0.04, 0.36, 0.23))
+            page.insert_text((x - fitz.get_text_length(label, fontname='hebo', fontsize=10) / 2, y + 3.5), label, fontname='hebo', fontsize=10, color=(0.04, 0.36, 0.23))
         output.save(out)
         output.close()
         source.close()
@@ -144,12 +147,25 @@ def export_ballooned_pdf(src: str, out: str, balloons, page_index: int = 0) -> N
         r = 18
         import math
         dx,dy=tx-x,ty-y; dist=math.hypot(dx,dy) or 1.0; ux,uy=dx/dist,dy/dist
-        start_gap=min(r+1,max(0.0,dist/3.0)); target_gap=min(34,max(18,dist*0.075))
-        sx,sy=x+ux*start_gap,y+uy*start_gap; ex,ey=tx-ux*target_gap,ty-uy*target_gap
+        start_gap=r+1
+        sx,sy=x+ux*start_gap,y+uy*start_gap
+        end_gap=7
+        ex,ey=tx-ux*end_gap,ty-uy*end_gap
         dr.line((sx, sy, ex, ey), fill=(11,93,59), width=2)
-        ang = math.atan2(ey-sy, ex-sx); ah = 9
+        ang = math.atan2(ey-sy, ex-sx); ah = 7
         p1=(ex-ah*math.cos(ang-0.55),ey-ah*math.sin(ang-0.55)); p2=(ex-ah*math.cos(ang+0.55),ey-ah*math.sin(ang+0.55))
         dr.line((ex,ey,p1[0],p1[1]), fill=(11,93,59), width=2); dr.line((ex,ey,p2[0],p2[1]), fill=(11,93,59), width=2)
         dr.ellipse((x-r, y-r, x+r, y+r), fill='white', outline=(11,93,59), width=3)
-        dr.text((x-5, y-7), str(b['number']), fill=(11,93,59))
+        try:
+            from PIL import ImageFont
+            font = ImageFont.truetype('DejaVuSans-Bold.ttf', 15)
+        except Exception:
+            font = None
+        label = str(b['number'])
+        try:
+            box = dr.textbbox((0,0), label, font=font)
+            tw, th = box[2]-box[0], box[3]-box[1]
+        except Exception:
+            tw, th = 10, 12
+        dr.text((x-tw/2, y-th/2-1), label, fill=(11,93,59), font=font)
     im.save(out, 'PDF', resolution=150)

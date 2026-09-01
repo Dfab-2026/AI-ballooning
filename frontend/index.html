@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>DFAB — Ballooning</title>
   <link rel="icon" type="image/png" href="assets/img/dfab-favicon.png" />
-  <link rel="stylesheet" href="assets/css/app.css?v=prod-clean-20260901" />
+  <link rel="stylesheet" href="assets/css/app.css?v=line-touch-final-3" />
 </head>
 <body>
 <div class="app-shell">
@@ -103,9 +103,8 @@
             <div class="drop-copy"><h3>Drop engineering drawings here</h3><p>Drag files into this area or browse from your computer.</p></div>
             <button id="browseBtn" class="secondary-btn choose-btn" type="button">Browse drawings</button>
             <div class="format-row"><span>PDF</span><span>PNG</span><span>JPG</span><span>JPEG</span><small>Multiple files supported</small></div>
+            <div id="fileSummary" class="file-summary upload-file-summary hidden"></div>
           </div>
-
-          <div id="fileSummary" class="file-summary hidden"></div>
           <div id="uploadError" class="error-box hidden"></div>
           <button id="analyzeBtn" class="primary-btn analyze-cta premium-analyze" type="button" disabled>
             <span><small>START WORKFLOW</small><b class="analyze-label">Analyze &amp; Auto-Balloon</b></span><span class="analyze-arrow">→</span>
@@ -179,7 +178,7 @@
         <section class="canvas-panel">
           <div class="canvas-toolbar">
             <div class="doc-info"><span class="status-dot"></span><b id="currentDrawingNumber">Drawing</b><span>•</span><span id="pageLabel">Page 1</span><span>•</span><span id="zoomLabel">100%</span></div>
-            <div class="canvas-actions"><span id="analysisEngine" class="analysis-badge">Auto analysis</span><button id="markReviewedBtn" class="review-btn" type="button">✓ Mark reviewed</button><button id="panelToggle" class="panel-toggle" type="button" title="Characteristics">Characteristics</button></div>
+            <div class="canvas-actions"><div class="workspace-panel-toggles" aria-label="Workspace panels"><button id="toggleToolsBtn" class="side-toggle-btn" type="button" aria-pressed="true" title="Show or hide tools">Tools</button><button id="toggleDrawingsBtn" class="side-toggle-btn" type="button" aria-pressed="true" title="Show or hide drawing list">Drawings</button><button id="panelToggle" class="side-toggle-btn" type="button" aria-pressed="true" title="Show or hide characteristics">Features</button></div><span id="analysisEngine" class="analysis-badge">Auto analysis</span><button id="markReviewedBtn" class="review-btn" type="button">✓ Mark reviewed</button></div>
           </div>
           <div id="stageScroll" class="stage-scroll">
             <div id="stage" class="stage"><img id="drawing" alt="Engineering drawing" draggable="false"/><svg id="overlay" xmlns="http://www.w3.org/2000/svg"></svg></div>
@@ -306,6 +305,6 @@
   </div>
 </div>
 <div id="toast" class="toast"></div>
-<script src="assets/js/app.js?v=prod-clean-20260901"></script>
+<script src="assets/js/app.js?v=above-text-gap-final-1"></script>
 </body>
 </html>
