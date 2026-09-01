@@ -76,119 +76,69 @@ async function startAnalysis(){
   $('uploadError').classList.add('hidden');
 
   try{
-    // Fail fast with a visible message if the local API is not running.
     const hr=await fetch(API+'/health',{cache:'no-store'}).catch(()=>null);
-    if(!hr||!hr.ok)throw new Error('Analysis engine is unavailable. Please retry in a moment.');
-    const hj=await hr.json().catch(()=>({}));
-    if(!hj.analysis_configured)throw new Error('Analysis engine needs an API key in backend/.env. Add the key, restart the backend, and try again.');
+    if(!hr||!hr.ok)throw new Error('Analysis API is unavailable.');
 
     switchView('processingView');
-    setProgress(0,'Uploading and preparing your drawing set…');
-    $('batchProgress').textContent=`Uploading ${selectedFiles.length} file${selectedFiles.length>1?'s':''}…`;
-    $('analysisProgressText').textContent='0 / 0';
-    $('analysisProgressFill').style.width='0%';
-    $('analysisProgressDetail').textContent='Preparing drawing set…';
+    setProgress(0,'Preparing drawing set…');
+    $('analysisProgressText').textContent='0 / ?';
+    $('analysisCount').textContent='0 / ?';
+    $('analysisProgressDetail').textContent='Uploading and analysing the complete drawing set in one production-safe request…';
 
     const fd=new FormData();
     selectedFiles.forEach(f=>fd.append('files',f));
     fd.append('project_name',$('projectName').value.trim()||'Drawing Ballooning Project');
 
-    const ur=await fetch(API+'/upload-batch',{method:'POST',body:fd});
-    const uj=await ur.json().catch(()=>({}));
-    if(!ur.ok)throw new Error(cleanAnalysisError(uj.detail||`Upload failed (${ur.status})`));
-    if(!uj.project_id||!Array.isArray(uj.drawings)||!uj.drawings.length)throw new Error('The drawing set was uploaded, but no reviewable drawings were returned.');
+    // IMPORTANT: upload + all analyses are deliberately one API request. Vercel /tmp
+    // is instance-local; separate /analyze-ai calls can land on different instances.
+    // One request keeps all six drawings in the same runtime and matches localhost.
+    const controller=new AbortController();
+    const timer=setTimeout(()=>controller.abort(),240000);
+    let r;
+    try{
+      r=await fetch(API+'/upload-analyze-batch',{method:'POST',body:fd,signal:controller.signal,cache:'no-store'});
+    }finally{clearTimeout(timer)}
+    const payload=await r.json().catch(()=>({}));
+    if(!r.ok)throw new Error(cleanAnalysisError(payload.detail||`Upload/analysis failed (${r.status})`));
+    if(!payload.project_id||!Array.isArray(payload.drawings)||!payload.drawings.length)throw new Error('No reviewable drawings were returned.');
 
-    projectId=uj.project_id;
-    drawings=uj.drawings.map((d,i)=>({...d,index:i,reviewed:false,balloons:[],originalBalloons:[],error:null}));
+    projectId=payload.project_id;
+    drawings=payload.drawings.map((d,i)=>{
+      const a=d.analysis||{};
+      const result=a.ok?a:{};
+      const mapped={...d,index:i,reviewed:false,balloons:[],originalBalloons:[],error:a.ok?null:(d.error||a.detail||null)};
+      if(a.ok){
+        mapped.drawing_number=result.drawing_number||mapped.drawing_number;
+        mapped.part_name=result.part_name||mapped.part_name||'';
+        mapped.customer=result.customer||result.company_name||mapped.customer||'';
+        mapped.company_name=result.company_name||mapped.company_name||'';
+        mapped.material=result.material||mapped.material||'';
+        mapped.scale=result.scale||mapped.scale||'';
+        mapped.sheet_number=result.sheet_number||mapped.sheet_number||'';
+        mapped.project_name=result.project_name||mapped.project_name||'';
+        mapped.po_number=result.po_number||mapped.po_number||'';
+        mapped.drawn_by=result.drawn_by||mapped.drawn_by||'';
+        mapped.checked_by=result.checked_by||mapped.checked_by||'';
+        mapped.approved_by=result.approved_by||mapped.approved_by||'';
+        mapped.revision=result.revision||mapped.revision||'';
+        mapped.drawing_date=result.drawing_date||mapped.drawing_date||'';
+        mapped.quantity=result.quantity||mapped.quantity||'';
+        mapped.balloons=(result.characteristics||[]).map(normalizeBalloon);
+        mapped.originalBalloons=JSON.parse(JSON.stringify(mapped.balloons));
+        mapped.status='analyzed';
+      }
+      return mapped;
+    });
+
     const total=drawings.length;
-    setProgress(1,`Analyzing 0 of ${total} drawings…`);
-    $('analysisProgressText').textContent=`0 / ${total}`;
-    $('analysisCount').textContent=`0 / ${total}`;
-    $('analysisProgressDetail').textContent=`0 completed · ${total} remaining`;
-    $('batchProgress').textContent=`${total} drawing${total!==1?'s':''} prepared.`;
-
-    let completed=0,successful=0,failed=0,cachedCount=0;
-    const workerCount=Math.min(3,total);
-    const updateBatchProgress=()=>{
-      const pct=total?Math.round(completed/total*100):0;
-      $('analysisProgressText').textContent=`${completed} / ${total}`;
-      $('analysisCount').textContent=`${completed} / ${total}`;
-      $('analysisProgressFill').style.width=pct+'%';
-      $('progressBar').style.width=(25+pct*.65)+'%';
-      $('analysisProgressDetail').textContent=`${successful} ready · ${failed} unavailable · ${Math.max(0,total-completed)} remaining${cachedCount?` · ${cachedCount} cached`:''}`;
-      $('processingText').textContent=completed<total?`Analyzing drawings… ${completed} of ${total} complete`:`Analysis complete for ${total} drawing${total!==1?'s':''}.`;
-    };
-
-    const fetchJsonWithTimeout=async(url,options={},timeoutMs=90000)=>{
-      const controller=new AbortController();
-      const timer=setTimeout(()=>controller.abort(),timeoutMs);
-      try{
-        const r=await fetch(url,{...options,signal:controller.signal});
-        const payload=await r.json().catch(()=>({}));
-        return {r,payload};
-      }finally{clearTimeout(timer)}
-    };
-
-    const applyAnalysis=(d,result)=>{
-      d.drawing_number=result.drawing_number||d.drawing_number;
-      d.part_name=result.part_name||d.part_name||'';
-      d.customer=result.customer||result.company_name||d.customer||'';
-      d.company_name=result.company_name||d.company_name||'';
-      d.material=result.material||d.material||'';
-      d.scale=result.scale||d.scale||'';
-      d.sheet_number=result.sheet_number||d.sheet_number||'';
-      d.project_name=result.project_name||d.project_name||'';
-      d.po_number=result.po_number||d.po_number||'';
-      d.drawn_by=result.drawn_by||d.drawn_by||'';
-      d.checked_by=result.checked_by||d.checked_by||'';
-      d.approved_by=result.approved_by||d.approved_by||'';
-      d.revision=result.revision||d.revision||'';
-      d.drawing_date=result.drawing_date||d.drawing_date||'';
-      d.quantity=result.quantity||d.quantity||'';
-      d.balloons=(result.characteristics||[]).map(normalizeBalloon);
-      d.originalBalloons=JSON.parse(JSON.stringify(d.balloons));
-      d.status='analyzed';d.error=null;
-    };
-
-    const analyzeOne=async(d,index)=>{
-      $('processingText').textContent=`Analyzing drawing ${index+1} of ${total}…`;
-      let lastMessage='Analysis failed';
-      for(let attempt=0;attempt<2;attempt++){
-        try{
-          const {r,payload}=await fetchJsonWithTimeout(`${API}/analyze-ai/${d.drawing_id}`,{method:'POST'},90000);
-          if(r.ok){
-            applyAnalysis(d,payload);
-            successful++;
-            if(payload.cached)cachedCount++;
-            completed++;updateBatchProgress();return;
-          }
-          lastMessage=cleanAnalysisError(payload.detail||`Analysis failed (${r.status})`);
-          // Do not repeatedly retry hard quota/key/input failures.
-          if(r.status===429||r.status===400||r.status===401||r.status===403)break;
-          if(attempt===0)await new Promise(resolve=>setTimeout(resolve,1200));
-        }catch(err){
-          lastMessage=err?.name==='AbortError'?'Analysis timed out for this drawing.':cleanAnalysisError(err.message||'Analysis failed');
-          if(attempt===0)await new Promise(resolve=>setTimeout(resolve,1200));
-        }
-      }
-      d.error=lastMessage;d.status='error';failed++;completed++;updateBatchProgress();
-    };
-
-    // Small worker pool = much faster than serial processing, while every drawing
-    // remains isolated so one bad page cannot cancel the other five.
-    let nextIndex=0;
-    const worker=async()=>{
-      while(true){
-        const index=nextIndex++;
-        if(index>=total)return;
-        await analyzeOne(drawings[index],index);
-      }
-    };
-    await Promise.all(Array.from({length:workerCount},()=>worker()));
-
-    setProgress(2,'Preparing the review workspace…');
-    $('progressBar').style.width='100%';
-    $('batchProgress').textContent=`${successful} of ${total} drawings ready${cachedCount?` · ${cachedCount} cached`:''}${failed?` · ${failed} need retry`:''}.`;
+    const successful=drawings.filter(d=>d.status==='analyzed').length;
+    const failed=total-successful;
+    $('analysisProgressText').textContent=`${total} / ${total}`;
+    $('analysisCount').textContent=`${total} / ${total}`;
+    $('analysisProgressFill').style.width='100%';
+    $('analysisProgressDetail').textContent=`${successful} ready · ${failed} unavailable · 0 remaining`;
+    setProgress(2,`Analysis finished for ${total} drawing${total!==1?'s':''}.`);
+    $('batchProgress').textContent=`${successful} of ${total} drawings ready${failed?` · ${failed} need retry`:''}.`;
 
     const first=drawings.findIndex(d=>d.balloons.length);
     if(first<0)throw new Error(drawings.find(d=>d.error)?.error||'No balloonable inspection characteristics were returned.');
@@ -204,7 +154,7 @@ async function startAnalysis(){
     toast(`${successful} drawing${successful!==1?'s':''} ready for review`);
   }catch(e){
     switchView('uploadView');
-    showError(cleanAnalysisError(e.message||'Analysis could not start.'));
+    showError(cleanAnalysisError(e?.name==='AbortError'?'Production analysis timed out. Try fewer drawings or reduce parallel workers.':(e.message||'Analysis could not start.')));
   }finally{
     btn.dataset.busy='0';
     btn.disabled=!selectedFiles.length;

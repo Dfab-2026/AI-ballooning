@@ -3,9 +3,9 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>DFAB — Engineering Drawing Inspection</title>
+  <title>DFAB — Ballooning</title>
   <link rel="icon" type="image/png" href="assets/img/dfab-favicon.png" />
-  <link rel="stylesheet" href="assets/css/app.css" />
+  <link rel="stylesheet" href="assets/css/app.css?v=prod-clean-20260901" />
 </head>
 <body>
 <div class="app-shell">
@@ -269,9 +269,9 @@
             </div>
             <label class="excel-remarks"><span>Remarks:</span><input id="reportRemarks" type="text" /></label>
             <div class="excel-signatures">
-              <label><input id="reportInspectedBy" type="text" /><span>INSPECTED BY</span></label>
-              <label><input id="reportQcIncharge" type="text" /><span>QC INCHARGE</span></label>
-              <label><input id="reportApprovedBy" type="text" /><span>APPROVED BY</span></label>
+              <label class="signature-cell signature-inspected"><div class="signature-stage"><input id="reportInspectedBy" type="text" /></div><span>INSPECTED BY</span></label>
+              <label class="signature-cell signature-qc"><div class="signature-stage"><img class="template-stamp" src="assets/img/inspection-stamp.png" alt="QC stamp/signature" /><input id="reportQcIncharge" type="text" /></div><span>QC INCHARGE</span></label>
+              <label class="signature-cell signature-approved"><div class="signature-stage"><img class="template-stamp" src="assets/img/inspection-stamp.png" alt="Approved stamp/signature" /><input id="reportApprovedBy" type="text" /></div><span>APPROVED BY</span></label>
             </div>
             </div>
           </div>
@@ -306,6 +306,6 @@
   </div>
 </div>
 <div id="toast" class="toast"></div>
-<script src="assets/js/app.js"></script>
+<script src="assets/js/app.js?v=prod-clean-20260901"></script>
 </body>
 </html>

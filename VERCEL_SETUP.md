@@ -1,46 +1,20 @@
-# Vercel deployment settings — use Framework Preset: Other
+# Vercel setup
 
-This package intentionally uses **Framework Preset = Other**, not FastAPI and not FastHTML.
+Import the GitHub repository as a new Vercel project.
 
-## Required project settings
-
-- Framework Preset: `Other`
+- Framework Preset: **Other**
 - Root Directory: `./`
-- Build Command: leave Override OFF / default
-- Output Directory: leave Override OFF / default
-- Install Command: leave Override OFF / default
-- Development Command: leave Override OFF / default
+- Build / Output / Install / Development command overrides: OFF
 
-Do not select the FastAPI or FastHTML preset. Do not configure a manual Python entrypoint in the Vercel dashboard.
-The repository-level `vercel.json` routes every request to the single root `main.py` ASGI application.
+Add Production environment variables (use your own key; never commit `.env`):
 
-## Environment variables
-
-Add these under Project Settings -> Environment Variables (Production and Preview):
-
-- `GEMINI_API_KEY` = your API key
-- `GEMINI_MODEL` = `gemini-2.5-flash`
-- `GEMINI_PARALLEL_WORKERS` = `3`
-- `GEMINI_ANALYSIS_MAX_DIM` = `1600`
-- `ANALYSIS_TRANSIENT_RETRIES` = `2`
-
-Never commit `backend/.env` to GitHub.
-
-## Expected production routes
-
-- `/` -> frontend
-- `/assets/...` -> frontend static assets
-- `/api/health` -> backend health JSON
-- `/api/upload-batch` -> upload endpoint
-- `/api/analyze-batch` -> batch analysis endpoint
-
-## Local run
-
-From the repository root:
-
-```powershell
-python -m pip install -r requirements.txt
-python -m uvicorn main:app --reload
+```
+GEMINI_API_KEY=...
+GEMINI_MODEL=gemini-2.5-flash-lite
+GEMINI_PARALLEL_WORKERS=2
+GEMINI_ANALYSIS_MAX_DIM=1200
+ANALYSIS_TRANSIENT_RETRIES=1
+GEMINI_MIN_CONFIDENCE=0.68
 ```
 
-Open `http://127.0.0.1:8000`.
+After deploy test `/api/health`, then upload the full drawing set. The production UI and localhost use the same `frontend/` files.

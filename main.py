@@ -4,8 +4,7 @@ The backend application is exposed twice:
 - `/api/*` for the browser/production API.
 - `/*` as a compatibility/local route so older local frontend calls continue to work.
 
-This keeps one Python entrypoint (`main.py`) for Vercel's FastAPI preset and avoids
-fragile rewrite/includeFiles configuration.
+This keeps one Python entrypoint (`main.py`) for local development and Vercel's Framework Preset: Other.
 """
 from fastapi import FastAPI
 from backend.app.main import app as backend_app

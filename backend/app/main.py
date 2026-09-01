@@ -12,9 +12,9 @@ from typing import List, Optional
 import hashlib
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, UploadFile, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -45,6 +45,21 @@ if not os.getenv('VERCEL'):
 
 app = FastAPI(title='InspectBalloon API', version='0.7.0')
 app.add_middleware(CORSMiddleware, allow_origins=['*'], allow_methods=['*'], allow_headers=['*'])
+
+@app.middleware('http')
+async def production_cache_headers(request: Request, call_next):
+    """Keep localhost and Vercel on the same frontend build.
+
+    The UI changes frequently while balloon placement is being tuned, so stale JS/CSS
+    must never survive a production deployment. Images/previews may still be cached by
+    the browser for the life of the page.
+    """
+    response = await call_next(request)
+    if request.url.path == '/' or request.url.path.endswith('.js') or request.url.path.endswith('.css'):
+        response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
+        response.headers['Pragma'] = 'no-cache'
+        response.headers['Expires'] = '0'
+    return response
 
 # Local convenience: the Python backend also serves the plain HTML frontend.
 # This makes one command enough: npm run dev OR python -m uvicorn backend.app.main:app --reload
@@ -337,13 +352,8 @@ def _finalize_analysis_result(drawing_id: str, analysis: dict, cached: bool = Fa
 
 
 def _inspection_template_path() -> str:
-    # Vercel bundles the deployment asset beside api/index.py; local development
-    # continues to use backend/templates.
-    if os.getenv('VERCEL') or os.path.abspath(os.getcwd()).startswith('/var/task'):
-        root = os.path.dirname(BASE)
-        bundled = os.path.join(root, 'api', 'assets', 'final_inspection_template.xlsx')
-        if os.path.exists(bundled):
-            return bundled
+    # One canonical template path for both localhost and Vercel.
+    # Keeping it under backend/templates avoids duplicate api/assets copies.
     return os.path.join(BASE, 'templates', 'final_inspection_template.xlsx')
 
 
@@ -482,29 +492,90 @@ def _build_inspection_workbook(report: InspectionReportPayload, out_path: str) -
     source._images = []
 
     def add_template_images(ws):
-        # Keep approval-area signatures/stamps inside the enlarged row 34 on every page.
-        # Logos and other non-approval images keep their original template anchors.
+        # Signature/stamp images are re-anchored into the tall row directly above
+        # INSPECTED BY / QC INCHARGE / APPROVED BY.  Using a fixed one-cell anchor
+        # prevents Excel from stretching or shifting the stamps when row heights or
+        # inspected-quantity columns change.
+        from openpyxl.drawing.spreadsheet_drawing import OneCellAnchor, AnchorMarker
+        from openpyxl.drawing.xdr import XDRPositiveSize2D
+        from openpyxl.utils.units import pixels_to_EMU
+        from openpyxl.utils import get_column_letter
+
+        def col_width_px(col_idx: int) -> int:
+            letter = get_column_letter(col_idx)
+            width = ws.column_dimensions[letter].width
+            width = 8.43 if width is None else float(width)
+            return max(8, int(width * 7 + 5))
+
+        signature_blocks = {
+            'inspected': (1, 4),   # A:D
+            'qc': (5, 9),          # E:I
+            'approved': (10, 13),  # J:M
+        }
+
         for spec in image_specs:
             try:
+                original = copy.deepcopy(spec['anchor'])
+                start = getattr(original, '_from', None)
+                if start is None:
+                    continue
+
+                # Only approval-area stamp/signature images are repositioned.
+                # Other images/logos retain the source workbook's original anchor.
+                src_row = int(start.row)
+                src_col = int(start.col)
+                if not (28 <= src_row <= 34):
+                    img = XLImage(BytesIO(spec['data']))
+                    img.width = spec['width']; img.height = spec['height']
+                    img.anchor = original
+                    ws.add_image(img)
+                    continue
+
+                # Map the template's original stamp to its correct approval block.
+                # Existing template anchors at H/I are QC; L/M are APPROVED.
+                if src_col <= 3:
+                    block = signature_blocks['inspected']
+                elif src_col <= 8:
+                    block = signature_blocks['qc']
+                else:
+                    block = signature_blocks['approved']
+
+                start_col, end_col = block
+                block_width = sum(col_width_px(c) for c in range(start_col, end_col + 1))
+                row_height_pt = max(float(ws.row_dimensions[34].height or 72.0), 72.0)
+                row_height_px = int(row_height_pt * 96 / 72)
+
+                # Fit the stamp entirely inside the large signature row with margin,
+                # preserve aspect ratio, and center it horizontally/vertically.
+                aspect = (float(spec['width']) / float(spec['height'])) if spec['height'] else 1.0
+                max_h = max(40, row_height_px - 12)
+                max_w = max(55, block_width - 16)
+                target_h = min(max_h, int(max_w / max(aspect, 0.01)))
+                target_w = int(target_h * aspect)
+                if target_w > max_w:
+                    target_w = max_w
+                    target_h = int(target_w / max(aspect, 0.01))
+
+                x_off = max(4, (block_width - target_w) // 2)
+                y_off = max(4, (row_height_px - target_h) // 2)
+                marker = AnchorMarker(
+                    col=start_col - 1,
+                    colOff=pixels_to_EMU(x_off),
+                    row=33,
+                    rowOff=pixels_to_EMU(y_off),
+                )
+                extent = XDRPositiveSize2D(
+                    cx=pixels_to_EMU(target_w),
+                    cy=pixels_to_EMU(target_h),
+                )
+
                 img = XLImage(BytesIO(spec['data']))
-                img.width = spec['width']; img.height = spec['height']
-                anchor = copy.deepcopy(spec['anchor'])
-                try:
-                    start = getattr(anchor, '_from', None)
-                    end = getattr(anchor, 'to', None)
-                    if start is not None and 29 <= int(start.row) <= 34 and 4 <= int(start.col) <= 12:
-                        delta = 33 - int(start.row)  # zero-based 33 == Excel row 34
-                        start.row = 33
-                        start.rowOff = max(int(getattr(start, 'rowOff', 0) or 0), 5 * 9525)
-                        if end is not None:
-                            end.row = max(33, int(end.row) + delta)
-                            if int(end.row) == 33:
-                                end.rowOff = min(max(int(getattr(end, 'rowOff', 0) or 0), 55 * 9525), 88 * 9525)
-                except Exception:
-                    pass
-                img.anchor = anchor
+                img.width = target_w
+                img.height = target_h
+                img.anchor = OneCellAnchor(_from=marker, ext=extent)
                 ws.add_image(img)
             except Exception:
+                # Never allow a bad stamp anchor to break report generation.
                 pass
 
     add_template_images(source)
@@ -541,6 +612,7 @@ def health():
         'ok': True,
         'service': 'InspectBalloon API',
         'analysis_configured': bool(os.getenv('GEMINI_API_KEY') or os.getenv('GOOGLE_API_KEY')),
+        'analysis_fallback_configured': bool(os.getenv('GEMINI_API_KEY_FALLBACK') or os.getenv('GEMINI_API_KEY_FALLBACK_2')),
         'analysis_model_configured': bool(os.getenv('GEMINI_MODEL', '')),
         'learning_examples': learned,
         'runtime_storage': 'temporary' if (os.getenv('VERCEL') or DATA.startswith(tempfile.gettempdir())) else 'local',
@@ -606,6 +678,59 @@ async def upload_batch(files: List[UploadFile] = File(...), project_name: str = 
     if not manifest['drawings']:
         raise HTTPException(400, 'No supported PDF, PNG, JPG or JPEG drawings were found')
     _write_manifest(manifest)
+    return manifest
+
+
+@app.post('/upload-analyze-batch')
+async def upload_analyze_batch(files: List[UploadFile] = File(...), project_name: str = Form('')):
+    """Upload and analyse the entire drawing set inside one server request.
+
+    Vercel serverless instances do not share /tmp reliably. The previous browser flow
+    uploaded once and then fired six separate /analyze-ai requests; those requests
+    could land on different instances, which is why production could show only one
+    analysed drawing while localhost analysed all six. Keeping upload, page rendering
+    and AI analysis in the same invocation removes that split-state failure mode.
+    """
+    manifest = await upload_batch(files=files, project_name=project_name)
+    items = manifest.get('drawings', [])
+    workers = max(1, min(int(os.getenv('GEMINI_PARALLEL_WORKERS', '2')), 3, len(items) or 1))
+    result_by_id = {}
+
+    def analyze_one(item):
+        drawing_id = item['drawing_id']
+        try:
+            result = analyze_ai(drawing_id, force=False)
+            return drawing_id, {'ok': True, **result}
+        except HTTPException as exc:
+            return drawing_id, {'ok': False, 'drawing_id': drawing_id, 'detail': str(exc.detail), 'status_code': exc.status_code}
+        except Exception as exc:
+            return drawing_id, {'ok': False, 'drawing_id': drawing_id, 'detail': str(exc), 'status_code': 502}
+
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        futures = [pool.submit(analyze_one, item) for item in items]
+        for future in as_completed(futures):
+            drawing_id, result = future.result()
+            result_by_id[drawing_id] = result
+
+    ready = 0
+    failed = 0
+    for item in items:
+        result = result_by_id.get(item['drawing_id'], {'ok': False, 'detail': 'Analysis did not complete'})
+        item['analysis'] = result
+        if result.get('ok'):
+            item['status'] = 'analyzed'
+            ready += 1
+        else:
+            item['status'] = 'error'
+            item['error'] = result.get('detail', 'Analysis failed')
+            failed += 1
+
+    manifest['analysis_summary'] = {
+        'total': len(items),
+        'successful': ready,
+        'failed': failed,
+        'parallel_workers': workers,
+    }
     return manifest
 
 

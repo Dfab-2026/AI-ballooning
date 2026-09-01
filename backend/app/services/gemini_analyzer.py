@@ -200,31 +200,40 @@ def _retry_after_seconds(exc: Exception) -> int:
     return 0
 
 
-def _call_model(client, models, contents, schema):
+def _call_model(clients, models, contents, schema):
+    """Call Gemini using the primary key first, then optional fallback key(s).
+
+    A fallback key is especially useful when it belongs to a DIFFERENT Gemini
+    project/quota pool. Keys from the same Google project normally share quota.
+    """
     from google.genai import types
     last_error=None
     max_retries=max(0,min(int(os.getenv('ANALYSIS_TRANSIENT_RETRIES','2')),2))
-    for model in models:
-        for attempt in range(max_retries+1):
-            try:
-                response=client.models.generate_content(
-                    model=model,
-                    contents=contents,
-                    config=types.GenerateContentConfig(response_mime_type='application/json',response_schema=schema,temperature=0.1),
-                )
-                if response.text:
-                    return response.text, model
-                last_error=RuntimeError('Analysis service returned an empty response')
-            except Exception as exc:
-                last_error=exc
-                text=str(exc)
-                retry=_retry_after_seconds(exc)
-                daily_quota=('GenerateRequestsPerDay' in text or 'free_tier_requests' in text or 'PerDayPerProject' in text)
-                is_transient=('503' in text or 'UNAVAILABLE' in text or ('429' in text and retry>0 and not daily_quota))
-                if is_transient and attempt<max_retries:
-                    time.sleep(min(retry or (2 if attempt==0 else 5),60))
-                    continue
-                break
+    for client_index, client in enumerate(clients):
+        key_label='primary' if client_index == 0 else f'fallback-{client_index}'
+        for model in models:
+            for attempt in range(max_retries+1):
+                try:
+                    response=client.models.generate_content(
+                        model=model,
+                        contents=contents,
+                        config=types.GenerateContentConfig(response_mime_type='application/json',response_schema=schema,temperature=0.1),
+                    )
+                    if response.text:
+                        return response.text, model, key_label
+                    last_error=RuntimeError('Analysis service returned an empty response')
+                except Exception as exc:
+                    last_error=exc
+                    text=str(exc)
+                    retry=_retry_after_seconds(exc)
+                    daily_quota=('GenerateRequestsPerDay' in text or 'free_tier_requests' in text or 'PerDayPerProject' in text)
+                    is_transient=('503' in text or 'UNAVAILABLE' in text or ('429' in text and retry>0 and not daily_quota))
+                    if is_transient and attempt<max_retries:
+                        time.sleep(min(retry or (2 if attempt==0 else 5),60))
+                        continue
+                    # For exhausted quota, invalid key, permission/model errors, etc.,
+                    # move on to the next model/key instead of aborting the whole request.
+                    break
     raise RuntimeError(str(last_error) if last_error else 'Analysis service failed')
 
 
@@ -265,43 +274,54 @@ def _to_output(parsed, width:int, height:int):
 
 
 def _client_and_models():
-    api_key=os.getenv('GEMINI_API_KEY') or os.getenv('GOOGLE_API_KEY')
-    if not api_key: raise RuntimeError('Analysis API key is not configured')
     from google import genai
+    keys=[]
+    for value in (
+        os.getenv('GEMINI_API_KEY') or os.getenv('GOOGLE_API_KEY'),
+        os.getenv('GEMINI_API_KEY_FALLBACK'),
+        os.getenv('GEMINI_API_KEY_FALLBACK_2'),
+    ):
+        value=(value or '').strip()
+        if value and value not in keys:
+            keys.append(value)
+    if not keys:
+        raise RuntimeError('Analysis API key is not configured')
     primary=os.getenv('GEMINI_MODEL','').strip()
-    if not primary: raise RuntimeError('Analysis model is not configured')
+    if not primary:
+        raise RuntimeError('Analysis model is not configured')
     fallbacks=[m.strip() for m in os.getenv('GEMINI_FALLBACK_MODELS','').split(',') if m.strip()]
-    return genai.Client(api_key=api_key), [primary]+[m for m in fallbacks if m!=primary]
+    clients=[genai.Client(api_key=key) for key in keys]
+    return clients, [primary]+[m for m in fallbacks if m!=primary]
 
 
 def analyze_with_gemini(image_path: str) -> dict:
     from google.genai import types
-    client,models=_client_and_models(); data,width,height=_prepare_image(image_path)
+    clients,models=_client_and_models(); data,width,height=_prepare_image(image_path)
     contents=[types.Part.from_bytes(data=data,mime_type='image/jpeg'), BASE_PROMPT+_learning_context()]
-    text,used_model=_call_model(client,models,contents,GeminiDrawingAnalysis)
+    text,used_model,used_key=_call_model(clients,models,contents,GeminiDrawingAnalysis)
     parsed=GeminiDrawingAnalysis.model_validate_json(text)
-    return {'drawing_number':(parsed.drawing_number or '').strip() or None,'part_name':(parsed.part_name or '').strip() or None,'customer':(parsed.customer or '').strip() or None,'company_name':(parsed.company_name or '').strip() or None,'material':(parsed.material or '').strip() or None,'scale':(parsed.scale or '').strip() or None,'sheet_number':(parsed.sheet_number or '').strip() or None,'project_name':(parsed.project_name or '').strip() or None,'po_number':(parsed.po_number or '').strip() or None,'drawn_by':(parsed.drawn_by or '').strip() or None,'checked_by':(parsed.checked_by or '').strip() or None,'approved_by':(parsed.approved_by or '').strip() or None,'revision':(parsed.revision or '').strip() or None,'drawing_date':(parsed.drawing_date or '').strip() or None,'quantity':(parsed.quantity or '').strip() or None,'characteristics':_to_output(parsed,width,height),'model':used_model}
+    return {'drawing_number':(parsed.drawing_number or '').strip() or None,'part_name':(parsed.part_name or '').strip() or None,'customer':(parsed.customer or '').strip() or None,'company_name':(parsed.company_name or '').strip() or None,'material':(parsed.material or '').strip() or None,'scale':(parsed.scale or '').strip() or None,'sheet_number':(parsed.sheet_number or '').strip() or None,'project_name':(parsed.project_name or '').strip() or None,'po_number':(parsed.po_number or '').strip() or None,'drawn_by':(parsed.drawn_by or '').strip() or None,'checked_by':(parsed.checked_by or '').strip() or None,'approved_by':(parsed.approved_by or '').strip() or None,'revision':(parsed.revision or '').strip() or None,'drawing_date':(parsed.drawing_date or '').strip() or None,'quantity':(parsed.quantity or '').strip() or None,'characteristics':_to_output(parsed,width,height),'model':used_model,'analysis_key':used_key}
 
 
 def analyze_batch_with_gemini(image_paths: List[str]) -> List[dict]:
     if not image_paths: return []
     if len(image_paths)==1: return [analyze_with_gemini(image_paths[0])]
     from google.genai import types
-    client,models=_client_and_models(); prepared=[]; contents=[]
+    clients,models=_client_and_models(); prepared=[]; contents=[]
     prompt=BASE_PROMPT+_learning_context()+f"\nThere are {len(image_paths)} drawings in this request. Return exactly one drawings[] entry for each, using drawing_index 1..{len(image_paths)} matching the labels."
     contents.append(prompt)
     for i,path in enumerate(image_paths,1):
         data,w,h=_prepare_image(path); prepared.append((w,h))
         contents.append(f'DRAWING {i}')
         contents.append(types.Part.from_bytes(data=data,mime_type='image/jpeg'))
-    text,used_model=_call_model(client,models,contents,GeminiBatchAnalysis)
+    text,used_model,used_key=_call_model(clients,models,contents,GeminiBatchAnalysis)
     parsed=GeminiBatchAnalysis.model_validate_json(text)
     by_index={d.drawing_index:d for d in parsed.drawings}
     results=[]
     for i,(w,h) in enumerate(prepared,1):
         d=by_index.get(i)
         if d is None:
-            results.append({'drawing_number':None,'part_name':None,'customer':None,'company_name':None,'material':None,'scale':None,'sheet_number':None,'project_name':None,'po_number':None,'drawn_by':None,'checked_by':None,'approved_by':None,'revision':None,'drawing_date':None,'quantity':None,'characteristics':[],'model':used_model,'error':'No analysis returned for this drawing'})
+            results.append({'drawing_number':None,'part_name':None,'customer':None,'company_name':None,'material':None,'scale':None,'sheet_number':None,'project_name':None,'po_number':None,'drawn_by':None,'checked_by':None,'approved_by':None,'revision':None,'drawing_date':None,'quantity':None,'characteristics':[],'model':used_model,'analysis_key':used_key,'error':'No analysis returned for this drawing'})
         else:
-            results.append({'drawing_number':(d.drawing_number or '').strip() or None,'part_name':(d.part_name or '').strip() or None,'customer':(d.customer or '').strip() or None,'company_name':(d.company_name or '').strip() or None,'material':(d.material or '').strip() or None,'scale':(d.scale or '').strip() or None,'sheet_number':(d.sheet_number or '').strip() or None,'project_name':(d.project_name or '').strip() or None,'po_number':(d.po_number or '').strip() or None,'drawn_by':(d.drawn_by or '').strip() or None,'checked_by':(d.checked_by or '').strip() or None,'approved_by':(d.approved_by or '').strip() or None,'revision':(d.revision or '').strip() or None,'drawing_date':(d.drawing_date or '').strip() or None,'quantity':(d.quantity or '').strip() or None,'characteristics':_to_output(d,w,h),'model':used_model})
+            results.append({'drawing_number':(d.drawing_number or '').strip() or None,'part_name':(d.part_name or '').strip() or None,'customer':(d.customer or '').strip() or None,'company_name':(d.company_name or '').strip() or None,'material':(d.material or '').strip() or None,'scale':(d.scale or '').strip() or None,'sheet_number':(d.sheet_number or '').strip() or None,'project_name':(d.project_name or '').strip() or None,'po_number':(d.po_number or '').strip() or None,'drawn_by':(d.drawn_by or '').strip() or None,'checked_by':(d.checked_by or '').strip() or None,'approved_by':(d.approved_by or '').strip() or None,'revision':(d.revision or '').strip() or None,'drawing_date':(d.drawing_date or '').strip() or None,'quantity':(d.quantity or '').strip() or None,'characteristics':_to_output(d,w,h),'model':used_model,'analysis_key':used_key})
     return results
