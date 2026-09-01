@@ -618,7 +618,7 @@ body input,body textarea,body [contenteditable="true"]{cursor:text!important}
 
 /* === v1.1.0 NPD cinematic upload + premium processing + D-balloon cursor === */
 :root{
-  --d-cursor:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='40' height='40' viewBox='0 0 40 40'%3E%3Ccircle cx='14' cy='13' r='10' fill='white' stroke='%230b5d3b' stroke-width='2.4'/%3E%3Ctext x='14' y='17' font-family='Arial' font-size='11' font-weight='800' text-anchor='middle' fill='%230b5d3b'%3ED%3C/text%3E%3Cpath d='M20.8 20.2L35 34' stroke='%230b5d3b' stroke-width='2.5' stroke-linecap='round'/%3E%3Cpath d='M31 33l4 1-1-4' fill='none' stroke='%230b5d3b' stroke-width='2'/%3E%3C/svg%3E") 14 13;
+  --d-cursor:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='58' height='58' viewBox='0 0 58 58'%3E%3Ccircle cx='14' cy='13' r='10' fill='white' stroke='%230b5d3b' stroke-width='2.4'/%3E%3Ctext x='14' y='17' font-family='Arial' font-size='11' font-weight='800' text-anchor='middle' fill='%230b5d3b'%3ED%3C/text%3E%3Cpath d='M20.8 20.2L52 51' stroke='%230b5d3b' stroke-width='2.5' stroke-linecap='round'/%3E%3Cpath d='M47 50l5 1-1-5' fill='none' stroke='%230b5d3b' stroke-width='2'/%3E%3C/svg%3E") 14 13;
 }
 body[data-cursor="d-balloon"],
 body[data-cursor="d-balloon"] *,
@@ -1139,3 +1139,45 @@ body[data-accent-theme="cyan"]{--blue:#00a7c7;--blue-dark:#007f9b;--accent-rgb:0
   .dfab-header-logo{width:104px;height:42px}
   .npd-upload-shell:after{left:46%!important;opacity:.55!important}
 }
+
+/* vNext: Excel-like resizable preview + dynamic inspected-quantity columns */
+.excel-report-table{width:max-content;min-width:100%;table-layout:fixed}
+.excel-report-table th{position:sticky;top:0;min-width:58px}
+.excel-report-table th:nth-child(1){width:58px;min-width:58px}.excel-report-table th:nth-child(2){width:220px;min-width:120px}.excel-report-table th:nth-child(3){width:165px;min-width:100px}.excel-report-table th:nth-child(4){width:145px;min-width:95px}.excel-report-table th.reading-head{width:82px;min-width:58px}
+.excel-report-table th{position:sticky}.col-resizer{position:absolute;right:-3px;top:0;width:7px;height:100%;cursor:col-resize;z-index:5;touch-action:none}.col-resizer:hover{background:rgba(45,107,255,.20)}
+.excel-report-table td:first-child{position:relative}.row-resizer{position:absolute;left:0;bottom:-3px;width:100%;height:7px;cursor:row-resize;z-index:4;touch-action:none}.row-resizer:hover{background:rgba(45,107,255,.16)}
+.excel-table-wrap{overflow:auto!important}.excel-report-table td{min-width:46px}
+/* Keep the template's three signature blocks in their original fixed positions. */
+.excel-signatures{display:grid!important;grid-template-columns:4fr 5fr 4fr!important}.excel-signatures>label{min-width:0}
+
+
+/* Balloon clearance: keep the true characteristic anchor available for editing,
+   but do not draw a permanent dot over dimension text/lines. */
+.balloon:not(.selected) .target-handle{opacity:0!important;fill:transparent!important;stroke:transparent!important;animation:none!important}
+.balloon.selected .target-handle{opacity:.72!important}
+
+
+/* === Cursor correction: normal workspace cursor; arrow-only placement cursor === */
+body[data-cursor="normal"],
+body[data-cursor="normal"] .app-shell,
+body[data-cursor="normal"] .view,
+body[data-cursor="normal"] .stage-scroll,
+body[data-cursor="normal"] #overlay,
+body[data-cursor="normal"] .drawing-dock,
+body[data-cursor="normal"] .inspect-panel,
+body[data-cursor="normal"] .report-view,
+body[data-cursor="normal"] .drop-zone{cursor:default!important}
+body[data-cursor="normal"] button,body[data-cursor="normal"] a{cursor:pointer!important}
+.cursor-preview.normal-arrow{width:22px;height:22px;display:grid;place-items:center;font-size:19px;line-height:1;color:var(--balloon-green);font-weight:900}
+:root{--add-arrow-cursor:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='36' height='36' viewBox='0 0 36 36'%3E%3Cpath d='M31 5L7 29' fill='none' stroke='%230b5d3b' stroke-width='2.4' stroke-linecap='round'/%3E%3Cpath d='M7 29L10 20L16 26Z' fill='%230b5d3b'/%3E%3C/svg%3E") 7 29}
+body.add-balloon-mode #overlay{cursor:var(--add-arrow-cursor),crosshair!important}
+
+
+/* === Placement cursor: balloon tag with arrow pointer; circle stays on the lower side === */
+:root{--add-arrow-cursor:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='48' height='48' viewBox='0 0 48 48'%3E%3Cpath d='M7 7L31 31' fill='none' stroke='%230b5d3b' stroke-width='2.2' stroke-linecap='round'/%3E%3Cpath d='M7 7L9 16L16 9Z' fill='%230b5d3b'/%3E%3Ccircle cx='36' cy='36' r='9' fill='white' stroke='%230b5d3b' stroke-width='2.2'/%3E%3C/svg%3E") 7 7}
+body.add-balloon-mode #overlay{cursor:var(--add-arrow-cursor),crosshair!important}
+
+/* === Final global straight D-balloon cursor === */
+:root{--d-cursor-final:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='38' height='58' viewBox='0 0 38 58'%3E%3Cpath d='M19 3V34' fill='none' stroke='%230b5d3b' stroke-width='2.2' stroke-linecap='round'/%3E%3Cpath d='M19 3L14 12H24Z' fill='%230b5d3b'/%3E%3Ccircle cx='19' cy='45' r='10' fill='white' stroke='%230b5d3b' stroke-width='2.2'/%3E%3Ctext x='19' y='49' font-family='Arial' font-size='11' font-weight='800' text-anchor='middle' fill='%230b5d3b'%3ED%3C/text%3E%3C/svg%3E") 19 3}
+html,body,body *,button,a,input,textarea,select,[contenteditable="true"],#overlay,.stage-scroll,.balloon,.balloon *{cursor:var(--d-cursor-final),default!important}
+body.add-balloon-mode #overlay{cursor:var(--d-cursor-final),default!important}

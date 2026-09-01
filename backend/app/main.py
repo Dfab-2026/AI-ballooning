@@ -1,6 +1,7 @@
 import json
 import copy
 import os
+import re
 import shutil
 import tempfile
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -136,6 +137,9 @@ class InspectionRow(BaseModel):
     description: str = ''
     dimension: str = ''
     instrument: str = ''
+    # Dynamic readings: one editable result column per inspected item.
+    readings: List[str] = []
+    # Backward compatibility with projects saved by earlier builds.
     reading1: str = ''
     reading2: str = ''
 
@@ -343,12 +347,43 @@ def _inspection_template_path() -> str:
     return os.path.join(BASE, 'templates', 'final_inspection_template.xlsx')
 
 
+def _inspection_quantity(value: str) -> int:
+    """Return the number of sample/result columns requested by INSPECTED QTY."""
+    match = re.search(r'\d+', str(value or ''))
+    if not match:
+        return 2
+    return max(1, min(int(match.group()), 50))
+
+
+def _row_readings(item: InspectionRow, qty: int) -> list[str]:
+    values = list(item.readings or [])
+    if not values:
+        values = [item.reading1 or '', item.reading2 or '']
+    if len(values) < qty:
+        values.extend([''] * (qty - len(values)))
+    return values[:qty]
+
+
+def _copy_cell_style(src, dst) -> None:
+    """Copy template cell styling without changing merged/signature locations."""
+    try:
+        dst._style = copy.copy(src._style)
+        dst.number_format = src.number_format
+        dst.font = copy.copy(src.font)
+        dst.fill = copy.copy(src.fill)
+        dst.border = copy.copy(src.border)
+        dst.alignment = copy.copy(src.alignment)
+        dst.protection = copy.copy(src.protection)
+    except Exception:
+        pass
+
+
 def _write_inspection_sheet(ws, report: InspectionReportPayload, rows: list[InspectionRow], page_no: int, total_pages: int) -> None:
-    # Preserve the uploaded workbook's layout and styling; only replace report data cells.
+    # Preserve the uploaded workbook's layout, merges, images/signatures and styling.
     ws['C7'] = report.part_name or ''
     ws['C8'] = report.drawing_number or ''
     ws['C9'] = report.customer or ''
-    
+
     try:
         ws['J7'] = datetime.strptime(report.report_date, '%Y-%m-%d') if report.report_date else datetime.now()
     except ValueError:
@@ -357,23 +392,65 @@ def _write_inspection_sheet(ws, report: InspectionReportPayload, rows: list[Insp
     ws['J9'] = report.total_qty or ''
     ws['M2'] = report.revision or '00'
     ws['M4'] = page_no
-    # Clear the 18 characteristic rows without disturbing formatting.
+
+    qty = _inspection_quantity(report.inspected_qty)
+    first_reading_col = 5  # E
+    last_reading_col = first_reading_col + qty - 1
+
+    # Dynamic sample headers: INSPECTED QTY 10 => result columns 1..10 (E:N).
+    # We DO NOT insert worksheet columns.  This is intentional: the original
+    # signature/approval cells and embedded signatures remain at their exact anchors.
+    for col in range(first_reading_col, max(last_reading_col, 6) + 1):
+        header = ws.cell(row=11, column=col)
+        if col > 6:
+            _copy_cell_style(ws.cell(row=11, column=6), header)
+            # Give dynamically-created result cells the same practical width as F.
+            letter = header.column_letter
+            if ws.column_dimensions[letter].width is None:
+                ws.column_dimensions[letter].width = ws.column_dimensions['F'].width or 14.4
+        header.value = (col - first_reading_col + 1) if col <= last_reading_col else None
+
+    # Clear characteristic rows while retaining the template formatting.
+    clear_to = max(last_reading_col, 6)
     for row_no in range(12, 30):
-        for col in range(1, 7):
-            ws.cell(row=row_no, column=col).value = None
+        for col in range(1, clear_to + 1):
+            cell = ws.cell(row=row_no, column=col)
+            if col > 6:
+                _copy_cell_style(ws.cell(row=row_no, column=6), cell)
+            cell.value = None
+
     for offset, item in enumerate(rows[:18]):
         row_no = 12 + offset
         ws.cell(row=row_no, column=1).value = item.number
         ws.cell(row=row_no, column=2).value = item.description
         ws.cell(row=row_no, column=3).value = item.dimension
         ws.cell(row=row_no, column=4).value = item.instrument
-        ws.cell(row=row_no, column=5).value = item.reading1 or None
-        ws.cell(row=row_no, column=6).value = item.reading2 or None
-    # Preserve the exact uploaded template formatting and update only editable report content.
+        readings = _row_readings(item, qty)
+        for idx, value in enumerate(readings):
+            cell = ws.cell(row=row_no, column=first_reading_col + idx)
+            if first_reading_col + idx > 6:
+                _copy_cell_style(ws.cell(row=row_no, column=6), cell)
+            cell.value = value or None
+
     ws['A32'] = 'Remarks: ' + (report.remarks or '')
-    ws['A34'] = report.inspected_by or ''
-    ws['E34'] = report.qc_incharge or ''
-    ws['J34'] = report.approved_by or ''
+
+    # Fixed large signature/stamp row for every generated template.
+    # Row 34 holds names/signatures/stamps; row 35 keeps the role labels.
+    ws.row_dimensions[34].height = max(float(ws.row_dimensions[34].height or 0), 72.0)
+    for cell_ref in ('A34', 'E34', 'J34'):
+        try:
+            alignment = copy.copy(ws[cell_ref].alignment)
+            alignment.horizontal = 'center'
+            alignment.vertical = 'center'
+            ws[cell_ref].alignment = alignment
+        except Exception:
+            pass
+
+    # Keep the three approval/signature blocks at the EXACT original template anchors.
+    # Never insert rows/columns before these cells.
+    ws['A34'] = report.inspected_by or ''       # A34:D34
+    ws['E34'] = report.qc_incharge or ''        # E34:I34
+    ws['J34'] = report.approved_by or ''        # J34:M34
 
 
 def _build_inspection_workbook(report: InspectionReportPayload, out_path: str) -> None:
@@ -405,11 +482,27 @@ def _build_inspection_workbook(report: InspectionReportPayload, out_path: str) -
     source._images = []
 
     def add_template_images(ws):
+        # Keep approval-area signatures/stamps inside the enlarged row 34 on every page.
+        # Logos and other non-approval images keep their original template anchors.
         for spec in image_specs:
             try:
                 img = XLImage(BytesIO(spec['data']))
                 img.width = spec['width']; img.height = spec['height']
-                img.anchor = copy.deepcopy(spec['anchor'])
+                anchor = copy.deepcopy(spec['anchor'])
+                try:
+                    start = getattr(anchor, '_from', None)
+                    end = getattr(anchor, 'to', None)
+                    if start is not None and 29 <= int(start.row) <= 34 and 4 <= int(start.col) <= 12:
+                        delta = 33 - int(start.row)  # zero-based 33 == Excel row 34
+                        start.row = 33
+                        start.rowOff = max(int(getattr(start, 'rowOff', 0) or 0), 5 * 9525)
+                        if end is not None:
+                            end.row = max(33, int(end.row) + delta)
+                            if int(end.row) == 33:
+                                end.rowOff = min(max(int(getattr(end, 'rowOff', 0) or 0), 55 * 9525), 88 * 9525)
+                except Exception:
+                    pass
+                img.anchor = anchor
                 ws.add_image(img)
             except Exception:
                 pass

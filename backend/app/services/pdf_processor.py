@@ -103,19 +103,33 @@ def export_ballooned_pdf(src: str, out: str, balloons, page_index: int = 0) -> N
             tx = float(b.get('target_x') if b.get('target_x') is not None else b['x']) / 2
             ty = float(b.get('target_y') if b.get('target_y') is not None else b['y']) / 2
             r = 10
-            page.draw_line((x, y), (tx, ty), color=(0, 0, 0), width=.9)
-            # Black arrowhead at the inspected feature target.
+            # Preserve each balloon's own adaptive leader length. The analyzer already
+            # increases height only when needed, by no more than ~0.5 cm.
             import math
-            ang = math.atan2(ty-y, tx-x)
+            page_rect = page.rect
+            x = min(max(r + 2, x), page_rect.width - r - 2)
+            y = min(max(r + 2, y), page_rect.height - r - 2)
+            # Leave white clearance before the actual dimension/callout so neither
+            # the leader nor arrowhead touches measurement text or dimension lines.
+            dx, dy = tx-x, ty-y
+            dist = math.hypot(dx, dy) or 1.0
+            ux, uy = dx/dist, dy/dist
+            start_gap = min(r + 1.5, max(0.0, dist / 3.0))
+            target_gap = min(17.0, max(9.0, dist * 0.075))
+            sx, sy = x + ux*start_gap, y + uy*start_gap
+            ex, ey = tx - ux*target_gap, ty - uy*target_gap
+            page.draw_line((sx, sy), (ex, ey), color=(0.04, 0.36, 0.23), width=1.05)
+            # Arrowhead stops at the clearance endpoint, not on the measurement.
+            ang = math.atan2(ey-sy, ex-sx)
             ah = 5.0
-            p1 = (tx-ah*math.cos(ang-0.55), ty-ah*math.sin(ang-0.55))
-            p2 = (tx-ah*math.cos(ang+0.55), ty-ah*math.sin(ang+0.55))
-            page.draw_line((tx, ty), p1, color=(0,0,0), width=.9)
-            page.draw_line((tx, ty), p2, color=(0,0,0), width=.9)
-            page.draw_circle((x, y), r, color=(0, 0, 0), fill=(1, 1, 1), width=1.2)
+            p1 = (ex-ah*math.cos(ang-0.55), ey-ah*math.sin(ang-0.55))
+            p2 = (ex-ah*math.cos(ang+0.55), ey-ah*math.sin(ang+0.55))
+            page.draw_line((ex, ey), p1, color=(0.04,0.36,0.23), width=1.05)
+            page.draw_line((ex, ey), p2, color=(0.04,0.36,0.23), width=1.05)
+            page.draw_circle((x, y), r, color=(0.04, 0.36, 0.23), fill=(1, 1, 1), width=1.2)
             label = str(b['number'])
             width = fitz.get_text_length(label, fontsize=8)
-            page.insert_text((x - width / 2, y + 2.8), label, fontsize=8, color=(0, 0, 0))
+            page.insert_text((x - width / 2, y + 2.8), label, fontsize=8, color=(0.04, 0.36, 0.23))
         output.save(out)
         output.close()
         source.close()
@@ -128,11 +142,14 @@ def export_ballooned_pdf(src: str, out: str, balloons, page_index: int = 0) -> N
         tx = float(b.get('target_x') if b.get('target_x') is not None else x)
         ty = float(b.get('target_y') if b.get('target_y') is not None else y)
         r = 18
-        dr.line((x, y, tx, ty), fill='black', width=2)
         import math
-        ang = math.atan2(ty-y, tx-x); ah = 9
-        p1=(tx-ah*math.cos(ang-0.55),ty-ah*math.sin(ang-0.55)); p2=(tx-ah*math.cos(ang+0.55),ty-ah*math.sin(ang+0.55))
-        dr.line((tx,ty,p1[0],p1[1]), fill='black', width=2); dr.line((tx,ty,p2[0],p2[1]), fill='black', width=2)
-        dr.ellipse((x-r, y-r, x+r, y+r), fill='white', outline='black', width=3)
-        dr.text((x-5, y-7), str(b['number']), fill='black')
+        dx,dy=tx-x,ty-y; dist=math.hypot(dx,dy) or 1.0; ux,uy=dx/dist,dy/dist
+        start_gap=min(r+1,max(0.0,dist/3.0)); target_gap=min(34,max(18,dist*0.075))
+        sx,sy=x+ux*start_gap,y+uy*start_gap; ex,ey=tx-ux*target_gap,ty-uy*target_gap
+        dr.line((sx, sy, ex, ey), fill=(11,93,59), width=2)
+        ang = math.atan2(ey-sy, ex-sx); ah = 9
+        p1=(ex-ah*math.cos(ang-0.55),ey-ah*math.sin(ang-0.55)); p2=(ex-ah*math.cos(ang+0.55),ey-ah*math.sin(ang+0.55))
+        dr.line((ex,ey,p1[0],p1[1]), fill=(11,93,59), width=2); dr.line((ex,ey,p2[0],p2[1]), fill=(11,93,59), width=2)
+        dr.ellipse((x-r, y-r, x+r, y+r), fill='white', outline=(11,93,59), width=3)
+        dr.text((x-5, y-7), str(b['number']), fill=(11,93,59))
     im.save(out, 'PDF', resolution=150)

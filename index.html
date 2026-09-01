@@ -29,9 +29,9 @@
             <button type="button" class="theme-swatch" data-theme="cyan" title="Cyan"><span style="--swatch:#00a7c7"></span>Cyan</button>
           </div>
           <button id="darkModeBtn" class="theme-dark-toggle" type="button">☾ Dark appearance</button>
-          <div class="cursor-menu-title"><b>Engineering cursor</b><small>Applied across the workspace</small></div>
+          <div class="cursor-menu-title"><b>Engineering cursor</b><small>Normal arrow across the workspace</small></div>
           <div class="cursor-swatches single-cursor" role="group" aria-label="Engineering cursor">
-            <button type="button" class="cursor-swatch active" data-cursor="d-balloon" title="D balloon cursor"><span class="cursor-preview d-balloon">D</span>D Balloon</button>
+            <button type="button" class="cursor-swatch active" data-cursor="normal" title="Normal arrow cursor"><span class="cursor-preview normal-arrow">↖</span>Normal Arrow</button>
           </div>
         </div>
       </div>
@@ -263,7 +263,7 @@
             <div class="excel-unit-row">ALL DIMENSIONS ARE IN MM</div>
             <div class="report-table-wrap excel-table-wrap">
               <table class="report-table excel-report-table">
-                <thead><tr><th>SL.NO</th><th>DISCRIPTION</th><th>DIMENSION</th><th>INSTRUMENT</th><th>1</th><th>2</th></tr></thead>
+                <thead><tr id="reportTableHead"><th>SL.NO</th><th>DISCRIPTION</th><th>DIMENSION</th><th>INSTRUMENT</th><th>1</th><th>2</th></tr></thead>
                 <tbody id="reportRows"></tbody>
               </table>
             </div>

@@ -271,11 +271,23 @@ if($('markAllReviewedBtn'))$('markAllReviewedBtn').onclick=()=>{
 };
 
 function clampDrawingPoint(p){return{x:Math.max(0,Math.min(naturalWidth,p.x)),y:Math.max(0,Math.min(naturalHeight,p.y))}}
+function leaderEndpoints(b){
+  const dx=b.target_x-b.x,dy=b.target_y-b.y,len=Math.hypot(dx,dy)||1,ux=dx/len,uy=dy/len;
+  // Preserve each balloon's saved/adaptive length instead of forcing equal leaders.
+  const balloonRadius=18,bodyGap=balloonRadius+1;
+  const targetGap=Math.min(34,Math.max(18,len*0.075));
+  const safeMargin=22;
+  const bx=Math.max(safeMargin,Math.min(naturalWidth-safeMargin,b.x));
+  const by=Math.max(safeMargin,Math.min(naturalHeight-safeMargin,b.y));
+  const ddx=b.target_x-bx,ddy=b.target_y-by,dlen=Math.hypot(ddx,ddy)||1,dux=ddx/dlen,duy=ddy/dlen;
+  return{x1:bx+dux*bodyGap,y1:by+duy*bodyGap,x2:Math.max(2,Math.min(naturalWidth-2,b.target_x-dux*targetGap)),y2:Math.max(2,Math.min(naturalHeight-2,b.target_y-duy*targetGap))};
+}
+
 function render(){
-  const svg=$('overlay');svg.innerHTML=`<defs><marker id="balloonArrowGreen" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto" markerUnits="strokeWidth"><path d="M0,0 L9,4.5 L0,9 z" fill="#0b5d3b"/></marker><marker id="balloonArrowRed" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto" markerUnits="strokeWidth"><path d="M0,0 L9,4.5 L0,9 z" fill="#ef4444"/></marker></defs>`;
+  const svg=$('overlay');svg.innerHTML=`<defs><marker id="balloonArrowGreen" markerWidth="10" markerHeight="10" refX="9" refY="5" orient="auto" markerUnits="strokeWidth"><path d="M0,0 L10,5 L0,10 z" fill="#0b5d3b"/></marker><marker id="balloonArrowRed" markerWidth="10" markerHeight="10" refX="9" refY="5" orient="auto" markerUnits="strokeWidth"><path d="M0,0 L10,5 L0,10 z" fill="#ef4444"/></marker></defs>`;
   balloons.forEach((b,i)=>{
     const g=document.createElementNS('http://www.w3.org/2000/svg','g');g.setAttribute('class','balloon'+(selected===i?' selected':''));g.dataset.index=i;
-    g.innerHTML=`<line class="leader" x1="${b.x}" y1="${b.y}" x2="${b.target_x}" y2="${b.target_y}" marker-end="url(#${selected===i?'balloonArrowRed':'balloonArrowGreen'})"/><circle class="target-handle" cx="${b.target_x}" cy="${b.target_y}" r="7"/><circle class="balloon-body" cx="${b.x}" cy="${b.y}" r="18"/><text x="${b.x}" y="${b.y}">${b.number}</text>`;
+    const ep=leaderEndpoints(b);g.innerHTML=`<line class="leader" x1="${ep.x1}" y1="${ep.y1}" x2="${ep.x2}" y2="${ep.y2}" marker-end="url(#${selected===i?'balloonArrowRed':'balloonArrowGreen'})"/><circle class="target-handle" cx="${b.target_x}" cy="${b.target_y}" r="5"/><circle class="balloon-body" cx="${b.x}" cy="${b.y}" r="18"/><text x="${b.x}" y="${b.y}">${b.number}</text>`;
     const body=g.querySelector('.balloon-body'),target=g.querySelector('.target-handle'),leader=g.querySelector('.leader');
     const startDrag=(kind,e)=>{if(mode!=='select')return;e.preventDefault();e.stopPropagation();selected=i;snapshot();const p=svgPoint(e);drag={kind,index:i,pointerId:e.pointerId,start:p,dx:p.x-b.x,dy:p.y-b.y,startX:b.x,startY:b.y,startTargetX:b.target_x,startTargetY:b.target_y};g.setPointerCapture?.(e.pointerId);svg.querySelectorAll('.balloon').forEach(x=>{x.classList.remove('selected');const ln=x.querySelector('.leader');if(ln)ln.setAttribute('marker-end','url(#balloonArrowGreen)')});g.classList.add('selected');leader.setAttribute('marker-end','url(#balloonArrowRed)');updatePanels()};
     body.addEventListener('pointerdown',e=>startDrag('body',e));
@@ -286,10 +298,18 @@ function render(){
     g.addEventListener('pointerup',endDrag);g.addEventListener('pointercancel',endDrag);svg.appendChild(g)
   });updatePanels();saveCurrentState()
 }
-function updateOverlayOnly(i){const g=$('overlay').querySelector(`g[data-index="${i}"]`),b=balloons[i];if(!g)return;const line=g.querySelector('.leader');line.setAttribute('x1',b.x);line.setAttribute('y1',b.y);line.setAttribute('x2',b.target_x);line.setAttribute('y2',b.target_y);const body=g.querySelector('.balloon-body'),target=g.querySelector('.target-handle');body.setAttribute('cx',b.x);body.setAttribute('cy',b.y);target.setAttribute('cx',b.target_x);target.setAttribute('cy',b.target_y);const t=g.querySelector('text');t.setAttribute('x',b.x);t.setAttribute('y',b.y)}
+function updateOverlayOnly(i){const g=$('overlay').querySelector(`g[data-index="${i}"]`),b=balloons[i];if(!g)return;const line=g.querySelector('.leader'),ep=leaderEndpoints(b);line.setAttribute('x1',ep.x1);line.setAttribute('y1',ep.y1);line.setAttribute('x2',ep.x2);line.setAttribute('y2',ep.y2);const body=g.querySelector('.balloon-body'),target=g.querySelector('.target-handle');body.setAttribute('cx',b.x);body.setAttribute('cy',b.y);target.setAttribute('cx',b.target_x);target.setAttribute('cy',b.target_y);const t=g.querySelector('text');t.setAttribute('x',b.x);t.setAttribute('y',b.y)}
 function svgPoint(e){const rect=$('overlay').getBoundingClientRect(),sx=$('overlay').viewBox.baseVal.width/rect.width,sy=$('overlay').viewBox.baseVal.height/rect.height;return{x:(e.clientX-rect.left)*sx,y:(e.clientY-rect.top)*sy}}
+function manualBalloonPosition(p){
+  const margin=34,baseX=190,baseY=128,maxExtra=28; // height may grow by max ~0.5 cm only
+  const preferred=(naturalWidth-p.x)>=p.x?1:-1,yDir=p.y<86?1:-1,candidates=[];
+  [0,10,20,maxExtra].forEach(h=>[0,18,36].forEach(x=>[preferred,-preferred].forEach(side=>candidates.push({x:p.x+side*(baseX+x),y:p.y+yDir*(baseY+h)}))));
+  const segDist=(q,a,b)=>{const vx=b.x-a.x,vy=b.y-a.y,d=vx*vx+vy*vy||1,t=Math.max(0,Math.min(1,((q.x-a.x)*vx+(q.y-a.y)*vy)/d)),x=a.x+t*vx,y=a.y+t*vy;return Math.hypot(q.x-x,q.y-y)};
+  for(const c0 of candidates){const c={x:Math.max(margin,Math.min(naturalWidth-margin,c0.x)),y:Math.max(margin,Math.min(naturalHeight-margin,c0.y))};if(Math.abs(c.x-p.x)<150||Math.abs(c.y-p.y)<88)continue;if(balloons.some(b=>Math.hypot(c.x-b.x,c.y-b.y)<=88))continue;if(balloons.some(b=>segDist({x:b.x,y:b.y},c,p)<44))continue;return c}
+  return{x:Math.max(margin,Math.min(naturalWidth-margin,p.x+preferred*baseX)),y:Math.max(margin,Math.min(naturalHeight-margin,p.y+yDir*(baseY+maxExtra)))};
+}
 let stagePan=null;
-$('overlay').addEventListener('pointerdown',e=>{if(e.target!==$('overlay'))return;if(mode==='add'){snapshot();const p=clampDrawingPoint(svgPoint(e)),n=nextNumber();balloons.push({number:n,text:'Manual characteristic',x:Math.min(naturalWidth,p.x+48),y:Math.max(0,p.y-36),target_x:p.x,target_y:p.y,type:'MAN',source:'manual'});selected=balloons.length-1;setMode('select');render();toast(`Balloon ${n} added`);return}const sc=$('stageScroll');stagePan={pointerId:e.pointerId,startX:e.clientX,startY:e.clientY,left:sc.scrollLeft,top:sc.scrollTop,moved:false};e.currentTarget.setPointerCapture?.(e.pointerId)});
+$('overlay').addEventListener('pointerdown',e=>{if(e.target!==$('overlay'))return;if(mode==='add'){snapshot();const p=clampDrawingPoint(svgPoint(e)),n=nextNumber(),pos=manualBalloonPosition(p);balloons.push({number:n,text:'Manual characteristic',x:pos.x,y:pos.y,target_x:p.x,target_y:p.y,type:'MAN',source:'manual'});selected=balloons.length-1;setMode('select');render();toast(`Balloon ${n} added`);return}const sc=$('stageScroll');stagePan={pointerId:e.pointerId,startX:e.clientX,startY:e.clientY,left:sc.scrollLeft,top:sc.scrollTop,moved:false};e.currentTarget.setPointerCapture?.(e.pointerId)});
 $('overlay').addEventListener('pointermove',e=>{if(!stagePan||stagePan.pointerId!==e.pointerId)return;const dx=e.clientX-stagePan.startX,dy=e.clientY-stagePan.startY;if(Math.abs(dx)+Math.abs(dy)>4)stagePan.moved=true;const sc=$('stageScroll');sc.scrollLeft=stagePan.left-dx;sc.scrollTop=stagePan.top-dy});
 function endStagePan(e){if(!stagePan||stagePan.pointerId!==e.pointerId)return;const moved=stagePan.moved;stagePan=null;try{$('overlay').releasePointerCapture?.(e.pointerId)}catch{}if(!moved){selected=null;render()}}
 $('overlay').addEventListener('pointerup',endStagePan);$('overlay').addEventListener('pointercancel',endStagePan);
@@ -297,7 +317,7 @@ function nextNumber(){return balloons.length?Math.max(...balloons.map(b=>Number(
 function updatePanels(){$('detectedCount').textContent=originalBalloons.length;$('balloonCount').textContent=balloons.length;const q=$('searchInput').value.trim().toLowerCase(),list=$('characteristicList');list.innerHTML='';const indexes=balloons.map((b,i)=>({b,i})).filter(({b})=>!q||String(b.number).includes(q)||(b.text||'').toLowerCase().includes(q));if(!indexes.length)list.innerHTML='<div class="empty-state">No characteristics found.<br>Use <b>Add</b> to place a manual balloon.</div>';indexes.forEach(({b,i})=>{const row=document.createElement('div');row.className='char-row'+(selected===i?' selected':'');const confidence=b.confidence?` · ${Math.round(b.confidence*100)}% confidence`:b.source==='manual'?' · Manual':'';row.innerHTML=`<div class="char-num">${b.number}</div><div class="char-info"><b>${escapeHtml(b.text||'Manual characteristic')}</b><small>${escapeHtml(drawings[currentIndex]?.drawing_number||'Drawing')}${confidence}</small></div><span class="char-type">${escapeHtml(b.type||'DIM')}</span>`;row.onclick=()=>{selected=i;render();centerSelected()};list.appendChild(row)});if(selected!==null&&balloons[selected]){const b=balloons[selected];$('propertiesCard').classList.remove('hidden');$('propNumber').value=b.number;$('propText').value=b.text;$('propX').value=Math.round(b.x);$('propY').value=Math.round(b.y)}else $('propertiesCard').classList.add('hidden')}
 $('searchInput').oninput=updatePanels;
 function centerSelected(){if(selected===null)return;const b=balloons[selected],sc=$('stageScroll');sc.scrollTo({left:Math.max(0,b.x*zoom-sc.clientWidth/2),top:Math.max(0,b.y*zoom-sc.clientHeight/2),behavior:'smooth'})}
-function setMode(m){mode=m;document.querySelectorAll('.rail-btn[data-tool]').forEach(x=>x.classList.toggle('active',x.dataset.tool===m));$('addBtn').classList.toggle('active',m==='add')}
+function setMode(m){mode=m;document.body.classList.toggle('add-balloon-mode',m==='add');document.querySelectorAll('.rail-btn[data-tool]').forEach(x=>x.classList.toggle('active',x.dataset.tool===m));$('addBtn').classList.toggle('active',m==='add')}
 $('addBtn').onclick=()=>{setMode('add');toast('Click directly on the missed characteristic')};
 $('deleteBtn').onclick=removeSelected;
 function removeSelected(){if(selected===null)return toast('Select a balloon first');snapshot();const n=balloons[selected].number;balloons.splice(selected,1);resequenceBalloons();selected=null;render();saveCurrentState();toast(`Balloon ${n} removed · sequence updated`)}
@@ -366,15 +386,30 @@ function buildReports(){
     part_name:d.part_name||'',customer:d.customer||d.company_name||'',revision:d.revision||'00',
     report_date:normalizeDrawingDate(d.drawing_date),inspected_qty:d.quantity||'',total_qty:d.quantity||'',
     remarks:[d.material?`Material: ${d.material}`:'',d.scale?`Scale: ${d.scale}`:'',d.project_name?`Project: ${d.project_name}`:'',d.po_number?`PO: ${d.po_number}`:''].filter(Boolean).join(' · ')||'Dimensions verified as per drawing',inspected_by:'',qc_incharge:'',approved_by:'',
-    rows:normalizedExportBalloons(d.balloons||[]).map(b=>({number:Number(b.number)||1,description:characteristicDescription(b),dimension:b.text||'',instrument:suggestedInstrument(b),reading1:'',reading2:''}))
+    rows:normalizedExportBalloons(d.balloons||[]).map(b=>({number:Number(b.number)||1,description:characteristicDescription(b),dimension:b.text||'',instrument:suggestedInstrument(b),readings:[]}))
   }));
+}
+function inspectedQtyCount(r){
+  const m=String(r?.inspected_qty||'').match(/\d+/);return m?Math.max(1,Math.min(Number(m[0]),50)):2;
+}
+function ensureReadings(row,qty){
+  if(!Array.isArray(row.readings))row.readings=[row.reading1||'',row.reading2||''];
+  while(row.readings.length<qty)row.readings.push('');
+  if(row.readings.length>qty)row.readings=row.readings.slice(0,qty);
+  return row.readings;
 }
 function saveReportForm(){
   const r=reports[reportIndex];if(!r)return;
   r.part_name=$('reportPartName').value.trim();r.drawing_number=$('reportDrawingNo').value.trim();r.customer=$('reportCustomer').value.trim();r.revision=$('reportRevision').value.trim();r.report_date=$('reportDate').value;r.inspected_qty=$('reportInspectedQty').value.trim();r.total_qty=$('reportTotalQty').value.trim();
   r.remarks=$('reportRemarks').value.trim();r.inspected_by=$('reportInspectedBy').value.trim();r.qc_incharge=$('reportQcIncharge').value.trim();r.approved_by=$('reportApprovedBy').value.trim();
-  document.querySelectorAll('#reportRows tr').forEach((tr,i)=>{if(!r.rows[i])return;const get=f=>tr.querySelector(`[data-field="${f}"]`)?.value??'';r.rows[i].description=get('description');r.rows[i].dimension=get('dimension');r.rows[i].instrument=get('instrument');r.rows[i].reading1=get('reading1');r.rows[i].reading2=get('reading2')});
+  const qty=inspectedQtyCount(r);
+  document.querySelectorAll('#reportRows tr[data-row-index]').forEach(tr=>{
+    const i=Number(tr.dataset.rowIndex);if(!r.rows[i])return;const get=f=>tr.querySelector(`[data-field="${f}"]`)?.value??'';
+    r.rows[i].description=get('description');r.rows[i].dimension=get('dimension');r.rows[i].instrument=get('instrument');
+    ensureReadings(r.rows[i],qty);tr.querySelectorAll('[data-reading-index]').forEach(inp=>{r.rows[i].readings[Number(inp.dataset.readingIndex)]=inp.value??''});
+  });
 }
+
 function selectReport(index){saveReportForm();reportIndex=Math.max(0,Math.min(reports.length-1,index));renderReportEditor();requestAnimationFrame(fitExcelView)}
 function renderReportDrawingGallery(){
   const el=$('reportDrawingGallery');el.innerHTML='';$('reportDrawingCount').textContent=`${drawings.length} drawing${drawings.length!==1?'s':''}`;
@@ -388,13 +423,26 @@ function renderReportEditor(){
   const r=reports[reportIndex];if(!r)return;
   renderReportDrawingGallery();renderReportExcelList();
   $('reportDrawingTitle').textContent=r.drawing_number||`Drawing ${reportIndex+1}`;$('reportPageNo').textContent='1';$('reportPartName').value=r.part_name||'';$('reportDrawingNo').value=r.drawing_number||'';$('reportCustomer').value=r.customer||'';$('reportRevision').value=r.revision||'00';$('reportDate').value=r.report_date||todayIso();$('reportInspectedQty').value=r.inspected_qty||'';$('reportTotalQty').value=r.total_qty||'';$('reportRemarks').value=r.remarks||'';$('reportInspectedBy').value=r.inspected_by||'';$('reportQcIncharge').value=r.qc_incharge||'';$('reportApprovedBy').value=r.approved_by||'';
+  const qty=inspectedQtyCount(r),head=$('reportTableHead');
+  head.innerHTML='<th>SL.NO<span class="col-resizer"></span></th><th>DISCRIPTION<span class="col-resizer"></span></th><th>DIMENSION<span class="col-resizer"></span></th><th>INSTRUMENT<span class="col-resizer"></span></th>'+Array.from({length:qty},(_,i)=>`<th class="reading-head">${i+1}<span class="col-resizer"></span></th>`).join('');
   const body=$('reportRows');body.innerHTML='';
-  r.rows.forEach(row=>{const tr=document.createElement('tr');tr.innerHTML=`<td><span class="report-balloon">${row.number}</span></td><td><input data-field="description" value="${escapeHtml(row.description)}" /></td><td><input data-field="dimension" value="${escapeHtml(row.dimension)}" /></td><td><input data-field="instrument" value="${escapeHtml(row.instrument)}" /></td><td><input class="reading-input" data-field="reading1" value="${escapeHtml(row.reading1||'')}" /></td><td><input class="reading-input" data-field="reading2" value="${escapeHtml(row.reading2||'')}" /></td>`;body.appendChild(tr)});
-  for(let blank=0;blank<2;blank++){const tr=document.createElement('tr');tr.className='report-spare-row';tr.innerHTML='<td></td><td><input aria-label="Spare inspection description" /></td><td><input aria-label="Spare inspection dimension" /></td><td><input aria-label="Spare inspection instrument" /></td><td><input aria-label="Spare inspection reading 1" /></td><td><input aria-label="Spare inspection reading 2" /></td>';body.appendChild(tr)}
-  if(!r.rows.length)body.insertAdjacentHTML('afterbegin','<tr><td colspan="6" class="report-empty">No balloons are available for this drawing.</td></tr>');
-  $('reportFooterStatus').textContent=`${r.drawing_number||`Drawing ${reportIndex+1}`} · PDF + editable Excel`;
+  r.rows.forEach((row,rowIndex)=>{ensureReadings(row,qty);const tr=document.createElement('tr');tr.dataset.rowIndex=rowIndex;tr.innerHTML=`<td><span class="report-balloon">${row.number}</span><span class="row-resizer" title="Drag to resize row"></span></td><td><input data-field="description" value="${escapeHtml(row.description)}" /></td><td><input data-field="dimension" value="${escapeHtml(row.dimension)}" /></td><td><input data-field="instrument" value="${escapeHtml(row.instrument)}" /></td>`+row.readings.map((v,i)=>`<td><input class="reading-input" data-reading-index="${i}" value="${escapeHtml(v||'')}" /></td>`).join('');body.appendChild(tr)});
+  for(let blank=0;blank<2;blank++){const tr=document.createElement('tr');tr.className='report-spare-row';tr.innerHTML='<td><span class="row-resizer" title="Drag to resize row"></span></td><td><input aria-label="Spare inspection description" /></td><td><input aria-label="Spare inspection dimension" /></td><td><input aria-label="Spare inspection instrument" /></td>'+Array.from({length:qty},(_,i)=>`<td><input aria-label="Spare inspection reading ${i+1}" /></td>`).join('');body.appendChild(tr)}
+  if(!r.rows.length)body.insertAdjacentHTML('afterbegin',`<tr><td colspan="${4+qty}" class="report-empty">No balloons are available for this drawing.</td></tr>`);
+  $('reportFooterStatus').textContent=`${r.drawing_number||`Drawing ${reportIndex+1}`} · ${qty} inspected result column${qty!==1?'s':''} · PDF + editable Excel`;
+  enableExcelGridResize();
 }
-function reportPayload(r){return {...r,rows:r.rows.map(x=>({...x,number:Number(x.number)||1}))}}
+function enableExcelGridResize(){
+  const table=document.querySelector('.excel-report-table');if(!table)return;
+  table.querySelectorAll('th .col-resizer').forEach(handle=>{
+    handle.onpointerdown=e=>{e.preventDefault();e.stopPropagation();const th=handle.parentElement,startX=e.clientX,startW=th.getBoundingClientRect().width;handle.setPointerCapture?.(e.pointerId);const move=ev=>{const w=Math.max(46,startW+ev.clientX-startX);th.style.width=w+'px';th.style.minWidth=w+'px'};const up=()=>{window.removeEventListener('pointermove',move);window.removeEventListener('pointerup',up)};window.addEventListener('pointermove',move);window.addEventListener('pointerup',up)};
+  });
+  table.querySelectorAll('tr .row-resizer').forEach(handle=>{
+    handle.onpointerdown=e=>{e.preventDefault();e.stopPropagation();const tr=handle.closest('tr'),startY=e.clientY,startH=tr.getBoundingClientRect().height;handle.setPointerCapture?.(e.pointerId);const move=ev=>{const h=Math.max(25,startH+ev.clientY-startY);tr.style.height=h+'px';tr.querySelectorAll('input').forEach(inp=>inp.style.height=Math.max(24,h-1)+'px')};const up=()=>{window.removeEventListener('pointermove',move);window.removeEventListener('pointerup',up)};window.addEventListener('pointermove',move);window.addEventListener('pointerup',up)};
+  });
+}
+
+function reportPayload(r){const qty=inspectedQtyCount(r);return {...r,rows:r.rows.map(x=>{const readings=ensureReadings(x,qty);return {...x,number:Number(x.number)||1,readings,reading1:readings[0]||'',reading2:readings[1]||''}})}}
 function drawingExportPayload(d){const finalBalloons=normalizedExportBalloons(d.balloons);d.balloons=JSON.parse(JSON.stringify(finalBalloons));return{balloons:finalBalloons,original_balloons:d.originalBalloons||[],learn:true,project_name:$('projectTitle').textContent,drawing_number:d.drawing_number||''}}
 function projectDrawingPayload(){saveCurrentState();return drawings.filter(d=>d.balloons?.length).map(d=>{const finalBalloons=normalizedExportBalloons(d.balloons);d.balloons=JSON.parse(JSON.stringify(finalBalloons));return{drawing_id:d.drawing_id,balloons:finalBalloons,original_balloons:d.originalBalloons||[],drawing_number:d.drawing_number||''}})}
 async function downloadCurrentDrawing(){saveReportForm();const d=drawings[reportIndex];const res=await fetch(`${API}/export-one/${d.drawing_id}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(drawingExportPayload(d))});if(!res.ok){const j=await res.json().catch(()=>({}));throw new Error(j.detail||'Drawing PDF export failed')}downloadBlob(await res.blob(),`${(d.drawing_number||'drawing').replace(/[^a-z0-9_-]+/gi,'_')}_ballooned.pdf`)}
@@ -413,6 +461,7 @@ function openDownloadChoice(type){
 function closeDownloadChoice(){$('downloadChoiceModal').classList.add('hidden')}
 $('nextBtn').onclick=()=>{const total=drawings.length,reviewed=drawings.filter(d=>d.reviewed).length;if(!total||reviewed!==total)return toast('Mark every drawing reviewed before continuing');buildReports();reportIndex=0;switchView('reportView');renderReportEditor();requestAnimationFrame(fitExcelView)};
 $('reportBackBtn').onclick=()=>{saveReportForm();switchView('editorView');renderDrawingNav();updateReviewProgress();requestAnimationFrame(fitView)};
+$('reportInspectedQty').addEventListener('change',()=>{saveReportForm();renderReportEditor();requestAnimationFrame(fitExcelView)});
 $('downloadDrawingsBtn').onclick=()=>openDownloadChoice('drawing');
 $('downloadExcelsBtn').onclick=()=>openDownloadChoice('excel');
 $('downloadChoiceClose').onclick=closeDownloadChoice;

@@ -82,8 +82,9 @@ Include when visibly present:
 
 Do NOT create characteristics from drawing number, revision, sheet number, scale, dates, quantities, material names, company/title-block administrative text, BOM item numbers, random standalone digits, or duplicate text belonging to the same characteristic.
 
-For each characteristic also return a short description based only on visible nearby feature context (for example Overall length, Hole diameter, Radius, Thread callout). If the feature name is not visible or inferable without guessing, use a generic type-based description. Return its exact visible text and the CENTER of the characteristic/callout in normalized coordinates where x=0 is left, x=1000 is right, y=0 is top, y=1000 is bottom. Use the location of the dimension/callout text itself, not the part geometry. Return each real characteristic once. STRICT BALLOON PLACEMENT RULES:
-- A balloon target MUST point to the visible dimension/callout text or its immediate leader/callout anchor, never to blank paper, title-block whitespace, borders, geometry with no dimension, logos, notes, or random areas.
+For each characteristic also return a short description based only on visible nearby feature context (for example Overall length, Hole diameter, Radius, Thread callout). If the feature name is not visible or inferable without guessing, use a generic type-based description. Return its exact visible text and a SAFE BALLOON ARROW ANCHOR in normalized coordinates where x=0 is left, x=1000 is right, y=0 is top, y=1000 is bottom. The anchor should be on the characteristic's nearby dimension line, extension line, or leader segment immediately beside the dimension text, with a small clear gap from all text glyphs. Do not place the anchor inside or on top of numbers, tolerance symbols, arrows, or lettering. Return each real characteristic once. STRICT BALLOON PLACEMENT RULES:
+- A balloon target MUST be a visible dimension/leader-line anchor immediately associated with the characteristic, never blank paper, title-block whitespace, borders, unrelated geometry, logos, notes, or random areas.
+- Prefer the dimension line, extension line, or existing measurement leader immediately NEXT TO the measurement. The green inspection arrow must point beside the measurement, never through its characters. The application will place the numbered circle ABOVE and BESIDE this anchor, with a long diagonal leader and visible white clearance around the measurement.
 - Do not return an item if you cannot confidently locate the exact visible characteristic on the page.
 - Exclude general notes, welding/process instructions, BOM rows, part labels, view labels, section labels, zone coordinates, page borders, title blocks and revision tables unless the text itself is an inspection characteristic.
 - Standalone numbers are NOT characteristics unless they are clearly part of a visible dimension/callout.
@@ -129,13 +130,53 @@ def _learning_context(limit: int = 8) -> str:
 
 
 def _balloon_offset(tx: float, ty: float, width: int, height: int, occupied: list[tuple[float, float]]) -> tuple[float, float]:
-    candidates = [(tx+55,ty-45),(tx-55,ty-45),(tx+60,ty+45),(tx-60,ty+45),(tx+75,ty),(tx-75,ty)]
+    """Place balloons cleanly without forcing every leader to the same length.
+
+    Start with the approved normal geometry. If that location would interfere with an
+    existing balloon/leader, vary the position and increase only the vertical offset,
+    by at most about 0.5 cm (28 px at the preview scale).
+    """
+    margin = 34.0
+    preferred = 1 if (width - tx) >= tx else -1
+    base_x = 190.0
+    base_y = 128.0
+    max_extra_height = 28.0  # ~0.5 cm maximum additional height
+    y_direction = 1.0 if ty < 86 else -1.0
+
+    def point_segment_distance(px, py, ax, ay, bx, by):
+        abx, aby = bx - ax, by - ay
+        denom = abx * abx + aby * aby
+        if denom <= 1e-9:
+            return ((px-ax)**2 + (py-ay)**2) ** 0.5
+        t = max(0.0, min(1.0, ((px-ax)*abx + (py-ay)*aby) / denom))
+        qx, qy = ax + t*abx, ay + t*aby
+        return ((px-qx)**2 + (py-qy)**2) ** 0.5
+
+    candidates = []
+    for extra_h in (0.0, 10.0, 20.0, max_extra_height):
+        for extra_x in (0.0, 18.0, 36.0):
+            for side in (preferred, -preferred):
+                candidates.append((
+                    tx + side * (base_x + extra_x),
+                    ty + y_direction * (base_y + extra_h),
+                ))
+
     for x, y in candidates:
-        x = min(max(24, x), max(24, width - 24)); y = min(max(24, y), max(24, height - 24))
-        if all((x-ox)**2 + (y-oy)**2 > 48**2 for ox,oy in occupied):
-            return x,y
-    x,y=candidates[0]
-    return min(max(24,x),width-24), min(max(24,y),height-24)
+        x = min(max(margin, x), max(margin, width - margin))
+        y = min(max(margin, y), max(margin, height - margin))
+        if abs(x - tx) < 150 or abs(y - ty) < 88:
+            continue
+        if any((x-ox)**2 + (y-oy)**2 <= 88**2 for ox, oy in occupied):
+            continue
+        if any(point_segment_distance(ox, oy, x, y, tx, ty) < 44 for ox, oy in occupied):
+            continue
+        return x, y
+
+    # Last resort: stay inside the sheet and use no more than +0.5 cm height.
+    x = tx + preferred * base_x
+    y = ty + y_direction * (base_y + max_extra_height)
+    return (min(max(margin, x), max(margin, width-margin)),
+            min(max(margin, y), max(margin, height-margin)))
 
 
 def _prepare_image(path: str):
