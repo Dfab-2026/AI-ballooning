@@ -611,8 +611,9 @@ def health():
     return {
         'ok': True,
         'service': 'InspectBalloon API',
-        'analysis_configured': bool(os.getenv('GEMINI_API_KEY') or os.getenv('GOOGLE_API_KEY')),
-        'analysis_fallback_configured': bool(os.getenv('GEMINI_API_KEY_FALLBACK') or os.getenv('GEMINI_API_KEY_FALLBACK_2')),
+        'analysis_configured': bool(os.getenv('GEMINI_API_KEY') or os.getenv('GEMINI_API_KEY_FALLBACK') or os.getenv('GEMINI_API_KEY_FALLBACK_2') or os.getenv('GOOGLE_API_KEY')),
+        'analysis_key_slots': sum(bool((os.getenv(name) or '').strip()) for name in ('GEMINI_API_KEY','GEMINI_API_KEY_FALLBACK','GEMINI_API_KEY_FALLBACK_2','GOOGLE_API_KEY')),
+        'analysis_model': os.getenv('GEMINI_MODEL', 'gemini-3.5-flash-lite'),
         'analysis_model_configured': bool(os.getenv('GEMINI_MODEL', '')),
         'learning_examples': learned,
         'runtime_storage': 'temporary' if (os.getenv('VERCEL') or DATA.startswith(tempfile.gettempdir())) else 'local',
@@ -734,6 +735,44 @@ async def upload_analyze_batch(files: List[UploadFile] = File(...), project_name
     return manifest
 
 
+@app.post('/reanalyze-upload')
+async def reanalyze_upload(
+    file: UploadFile = File(...),
+    page_index: int = Form(0),
+):
+    """Re-analyse one failed drawing directly from the browser's original file.
+
+    This endpoint is deliberately stateless. On Vercel, a retry can land on a new
+    serverless instance where the earlier /tmp drawing no longer exists. Re-uploading
+    just the original source file makes the small Analyze button reliable in both
+    localhost and production.
+    """
+    ext = os.path.splitext(file.filename or '')[1].lower()
+    if ext not in ['.pdf', '.png', '.jpg', '.jpeg']:
+        raise HTTPException(400, 'Select a PDF, PNG, JPG or JPEG drawing')
+    if not (os.getenv('GEMINI_API_KEY') or os.getenv('GEMINI_API_KEY_FALLBACK') or os.getenv('GEMINI_API_KEY_FALLBACK_2') or os.getenv('GOOGLE_API_KEY')):
+        raise HTTPException(503, 'Analysis service is not configured')
+
+    tmp_dir = tempfile.mkdtemp(prefix='balloon_retry_')
+    src = os.path.join(tmp_dir, 'source' + ext)
+    preview = os.path.join(tmp_dir, 'preview.png')
+    try:
+        with open(src, 'wb') as out:
+            shutil.copyfileobj(file.file, out)
+        count = page_count(src)
+        page_index = max(0, min(int(page_index), max(0, count - 1)))
+        render_page(src, preview, page_index)
+        try:
+            return {'ok': True, **analyze_with_gemini(preview)}
+        except Exception as exc:
+            text = str(exc)
+            if '429' in text or 'RESOURCE_EXHAUSTED' in text:
+                raise HTTPException(429, 'All configured analysis API-key/model fallbacks are currently quota-limited. Try this drawing again later.')
+            raise HTTPException(502, f'Analysis failed: {text}')
+    finally:
+        shutil.rmtree(tmp_dir, ignore_errors=True)
+
+
 @app.post('/analyze-ai/{drawing_id}')
 def analyze_ai(drawing_id: str, force: bool = False):
     folder = os.path.join(DATA, drawing_id)
@@ -744,7 +783,7 @@ def analyze_ai(drawing_id: str, force: bool = False):
         cached = _cached_analysis(drawing_id)
         if cached:
             return cached
-    if not (os.getenv('GEMINI_API_KEY') or os.getenv('GOOGLE_API_KEY')):
+    if not (os.getenv('GEMINI_API_KEY') or os.getenv('GEMINI_API_KEY_FALLBACK') or os.getenv('GEMINI_API_KEY_FALLBACK_2') or os.getenv('GOOGLE_API_KEY')):
         raise HTTPException(503, 'Analysis service is not configured. Add the API key to backend/.env and restart the backend.')
     try:
         analysis = analyze_with_gemini(preview)

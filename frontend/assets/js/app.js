@@ -192,6 +192,43 @@ function toggleDrawingReviewed(index){
   renderDrawingNav();updateReviewProgress();if(index===currentIndex)updateCurrentReviewButton();
   toast(d.reviewed?'Drawing reviewed':'Review mark removed');
 }
+async function retryDrawingAnalysis(index){
+  saveCurrentState();
+  const d=drawings[index];
+  if(!d)return;
+  const file=selectedFiles.find(f=>f.name===d.source_filename) || selectedFiles[0];
+  if(!file){toast('Original drawing file is not available for retry. Upload the drawing set again.');return}
+  d.retrying=true;renderDrawingNav();
+  try{
+    const fd=new FormData();
+    fd.append('file',file);
+    fd.append('page_index',String(Number(d.page_index)||0));
+    const controller=new AbortController();
+    const timer=setTimeout(()=>controller.abort(),180000);
+    let r;
+    try{r=await fetch(API+'/reanalyze-upload',{method:'POST',body:fd,signal:controller.signal,cache:'no-store'})}
+    finally{clearTimeout(timer)}
+    const a=await r.json().catch(()=>({}));
+    if(!r.ok||!a.ok)throw new Error(cleanAnalysisError(a.detail||`Analysis failed (${r.status})`));
+    d.drawing_number=a.drawing_number||d.drawing_number;
+    d.part_name=a.part_name||d.part_name||'';
+    d.customer=a.customer||a.company_name||d.customer||'';
+    d.company_name=a.company_name||d.company_name||'';
+    d.material=a.material||d.material||'';d.scale=a.scale||d.scale||'';d.sheet_number=a.sheet_number||d.sheet_number||'';
+    d.project_name=a.project_name||d.project_name||'';d.po_number=a.po_number||d.po_number||'';
+    d.drawn_by=a.drawn_by||d.drawn_by||'';d.checked_by=a.checked_by||d.checked_by||'';d.approved_by=a.approved_by||d.approved_by||'';
+    d.revision=a.revision||d.revision||'';d.drawing_date=a.drawing_date||d.drawing_date||'';d.quantity=a.quantity||d.quantity||'';
+    d.balloons=(a.characteristics||[]).map(normalizeBalloon);
+    d.originalBalloons=JSON.parse(JSON.stringify(d.balloons));
+    d.status='analyzed';d.error=null;d.retrying=false;
+    if(index===currentIndex){loadedDrawingIndex=null;await loadDrawing(index)}else renderDrawingNav();
+    toast(`Drawing ${index+1} analyzed${a.api_key_slot?` via ${a.api_key_slot}`:''}`);
+  }catch(e){
+    d.retrying=false;d.status='error';d.error=e?.name==='AbortError'?'Single-drawing analysis timed out. Try again.':(e.message||'Analysis failed');
+    renderDrawingNav();toast(d.error);
+  }
+}
+
 function renderDrawingNav(){
   const nav=$('drawingNav');nav.innerHTML='';
   drawings.forEach((d,i)=>{
@@ -199,8 +236,10 @@ function renderDrawingNav(){
     card.className='drawing-tab'+(i===currentIndex?' active':'')+(d.reviewed?' reviewed':'')+(d.error?' error':'');
     const label=d.drawing_number||`Drawing ${String(i+1).padStart(2,'0')}`;
     const drawingName=(d.part_name||d.drawing_name||d.source_filename||label).replace(/\.[^.]+$/,'');
-    card.innerHTML=`<button class="drawing-tab-main" type="button" title="Open ${escapeHtml(drawingName)}"><span class="drawing-index">${String(i+1).padStart(2,'0')}</span><span class="drawing-tab-info"><span class="drawing-name">${escapeHtml(drawingName)}</span></span><em title="${d.balloons.length} balloons">${d.error?'!':d.balloons.length}</em></button><button class="review-dot ${d.reviewed?'is-reviewed':'is-pending'}" type="button" title="${d.reviewed?'Reviewed — click to mark pending':'Pending review — click to mark reviewed'}" aria-label="${d.reviewed?'Mark drawing pending':'Mark drawing reviewed'}"><span>${d.reviewed?'✓':''}</span></button>`;
+    const needsAnalyze=d.status!=='analyzed' || !!d.error;
+    card.innerHTML=`<button class="drawing-tab-main" type="button" title="Open ${escapeHtml(drawingName)}"><span class="drawing-index">${String(i+1).padStart(2,'0')}</span><span class="drawing-tab-info"><span class="drawing-name">${escapeHtml(drawingName)}</span></span><em title="${d.balloons.length} balloons">${d.error?'!':d.balloons.length}</em></button>${needsAnalyze?`<button class="retry-analysis-btn" type="button" title="Analyze only this drawing" ${d.retrying?'disabled':''}>${d.retrying?'…':'Analyze'}</button>`:''}<button class="review-dot ${d.reviewed?'is-reviewed':'is-pending'}" type="button" title="${d.reviewed?'Reviewed — click to mark pending':'Pending review — click to mark reviewed'}" aria-label="${d.reviewed?'Mark drawing pending':'Mark drawing reviewed'}"><span>${d.reviewed?'✓':''}</span></button>`;
     card.querySelector('.drawing-tab-main').onclick=()=>loadDrawing(i);
+    const retryBtn=card.querySelector('.retry-analysis-btn');if(retryBtn)retryBtn.onclick=e=>{e.stopPropagation();retryDrawingAnalysis(i)};
     card.querySelector('.review-dot').onclick=e=>{e.stopPropagation();toggleDrawingReviewed(i)};
     nav.appendChild(card);
   });

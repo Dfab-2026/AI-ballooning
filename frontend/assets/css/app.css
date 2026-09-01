@@ -1261,3 +1261,10 @@ body.add-balloon-mode #overlay{cursor:var(--d-cursor-final),default!important}
 .dark .excel-signatures .signature-stage,
 .dark .excel-signatures .signature-cell,
 .dark .excel-signatures .signature-cell>span{background:#fff!important;color:#111!important}
+
+
+/* Failed-drawing single retry: compact Analyze button sits immediately before review. */
+.drawing-tab{grid-template-columns:minmax(0,1fr) auto 28px!important;}
+.retry-analysis-btn{height:22px;min-width:44px;padding:0 6px;border:1px solid #f0b45a;border-radius:6px;background:#fff7e8;color:#9a5a00;font-size:7px;font-weight:800;cursor:pointer;line-height:1;}
+.retry-analysis-btn:hover{background:#ffedc8;border-color:#e49a2a}.retry-analysis-btn:disabled{opacity:.55;cursor:wait}
+.dark .retry-analysis-btn{background:#3a2d18;color:#ffd58b;border-color:#74552b}
