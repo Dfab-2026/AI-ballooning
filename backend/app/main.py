@@ -482,29 +482,90 @@ def _build_inspection_workbook(report: InspectionReportPayload, out_path: str) -
     source._images = []
 
     def add_template_images(ws):
-        # Keep approval-area signatures/stamps inside the enlarged row 34 on every page.
-        # Logos and other non-approval images keep their original template anchors.
+        # Signature/stamp images are re-anchored into the tall row directly above
+        # INSPECTED BY / QC INCHARGE / APPROVED BY.  Using a fixed one-cell anchor
+        # prevents Excel from stretching or shifting the stamps when row heights or
+        # inspected-quantity columns change.
+        from openpyxl.drawing.spreadsheet_drawing import OneCellAnchor, AnchorMarker
+        from openpyxl.drawing.xdr import XDRPositiveSize2D
+        from openpyxl.utils.units import pixels_to_EMU
+        from openpyxl.utils import get_column_letter
+
+        def col_width_px(col_idx: int) -> int:
+            letter = get_column_letter(col_idx)
+            width = ws.column_dimensions[letter].width
+            width = 8.43 if width is None else float(width)
+            return max(8, int(width * 7 + 5))
+
+        signature_blocks = {
+            'inspected': (1, 4),   # A:D
+            'qc': (5, 9),          # E:I
+            'approved': (10, 13),  # J:M
+        }
+
         for spec in image_specs:
             try:
+                original = copy.deepcopy(spec['anchor'])
+                start = getattr(original, '_from', None)
+                if start is None:
+                    continue
+
+                # Only approval-area stamp/signature images are repositioned.
+                # Other images/logos retain the source workbook's original anchor.
+                src_row = int(start.row)
+                src_col = int(start.col)
+                if not (28 <= src_row <= 34):
+                    img = XLImage(BytesIO(spec['data']))
+                    img.width = spec['width']; img.height = spec['height']
+                    img.anchor = original
+                    ws.add_image(img)
+                    continue
+
+                # Map the template's original stamp to its correct approval block.
+                # Existing template anchors at H/I are QC; L/M are APPROVED.
+                if src_col <= 3:
+                    block = signature_blocks['inspected']
+                elif src_col <= 8:
+                    block = signature_blocks['qc']
+                else:
+                    block = signature_blocks['approved']
+
+                start_col, end_col = block
+                block_width = sum(col_width_px(c) for c in range(start_col, end_col + 1))
+                row_height_pt = max(float(ws.row_dimensions[34].height or 72.0), 72.0)
+                row_height_px = int(row_height_pt * 96 / 72)
+
+                # Fit the stamp entirely inside the large signature row with margin,
+                # preserve aspect ratio, and center it horizontally/vertically.
+                aspect = (float(spec['width']) / float(spec['height'])) if spec['height'] else 1.0
+                max_h = max(40, row_height_px - 12)
+                max_w = max(55, block_width - 16)
+                target_h = min(max_h, int(max_w / max(aspect, 0.01)))
+                target_w = int(target_h * aspect)
+                if target_w > max_w:
+                    target_w = max_w
+                    target_h = int(target_w / max(aspect, 0.01))
+
+                x_off = max(4, (block_width - target_w) // 2)
+                y_off = max(4, (row_height_px - target_h) // 2)
+                marker = AnchorMarker(
+                    col=start_col - 1,
+                    colOff=pixels_to_EMU(x_off),
+                    row=33,
+                    rowOff=pixels_to_EMU(y_off),
+                )
+                extent = XDRPositiveSize2D(
+                    cx=pixels_to_EMU(target_w),
+                    cy=pixels_to_EMU(target_h),
+                )
+
                 img = XLImage(BytesIO(spec['data']))
-                img.width = spec['width']; img.height = spec['height']
-                anchor = copy.deepcopy(spec['anchor'])
-                try:
-                    start = getattr(anchor, '_from', None)
-                    end = getattr(anchor, 'to', None)
-                    if start is not None and 29 <= int(start.row) <= 34 and 4 <= int(start.col) <= 12:
-                        delta = 33 - int(start.row)  # zero-based 33 == Excel row 34
-                        start.row = 33
-                        start.rowOff = max(int(getattr(start, 'rowOff', 0) or 0), 5 * 9525)
-                        if end is not None:
-                            end.row = max(33, int(end.row) + delta)
-                            if int(end.row) == 33:
-                                end.rowOff = min(max(int(getattr(end, 'rowOff', 0) or 0), 55 * 9525), 88 * 9525)
-                except Exception:
-                    pass
-                img.anchor = anchor
+                img.width = target_w
+                img.height = target_h
+                img.anchor = OneCellAnchor(_from=marker, ext=extent)
                 ws.add_image(img)
             except Exception:
+                # Never allow a bad stamp anchor to break report generation.
                 pass
 
     add_template_images(source)

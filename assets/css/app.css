@@ -1181,3 +1181,74 @@ body.add-balloon-mode #overlay{cursor:var(--add-arrow-cursor),crosshair!importan
 :root{--d-cursor-final:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='38' height='58' viewBox='0 0 38 58'%3E%3Cpath d='M19 3V34' fill='none' stroke='%230b5d3b' stroke-width='2.2' stroke-linecap='round'/%3E%3Cpath d='M19 3L14 12H24Z' fill='%230b5d3b'/%3E%3Ccircle cx='19' cy='45' r='10' fill='white' stroke='%230b5d3b' stroke-width='2.2'/%3E%3Ctext x='19' y='49' font-family='Arial' font-size='11' font-weight='800' text-anchor='middle' fill='%230b5d3b'%3ED%3C/text%3E%3C/svg%3E") 19 3}
 html,body,body *,button,a,input,textarea,select,[contenteditable="true"],#overlay,.stage-scroll,.balloon,.balloon *{cursor:var(--d-cursor-final),default!important}
 body.add-balloon-mode #overlay{cursor:var(--d-cursor-final),default!important}
+
+
+/* === Fixed Excel signature/stamp row: preview matches exported workbook === */
+.excel-signatures{
+  min-height:128px!important;
+  grid-template-columns:4fr 5fr 4fr!important;
+  background:#fff!important;
+}
+.excel-signatures .signature-cell{
+  display:grid!important;
+  grid-template-rows:minmax(96px,1fr) 30px!important;
+  min-width:0!important;
+  border-right:1px solid #535b65!important;
+  background:#fff!important;
+  overflow:hidden!important;
+}
+.excel-signatures .signature-cell:last-child{border-right:0!important}
+.excel-signatures .signature-stage{
+  position:relative!important;
+  min-height:96px!important;
+  height:100%!important;
+  overflow:hidden!important;
+  border-bottom:1px solid #535b65!important;
+  display:flex!important;
+  align-items:center!important;
+  justify-content:center!important;
+  background:#fff!important;
+}
+.excel-signatures .signature-stage .template-stamp{
+  position:absolute!important;
+  left:50%!important;
+  top:50%!important;
+  transform:translate(-50%,-50%)!important;
+  width:auto!important;
+  height:auto!important;
+  max-width:76%!important;
+  max-height:84px!important;
+  object-fit:contain!important;
+  pointer-events:none!important;
+  user-select:none!important;
+  z-index:1!important;
+}
+.excel-signatures .signature-stage input{
+  position:relative!important;
+  z-index:2!important;
+  width:100%!important;
+  height:100%!important;
+  min-height:96px!important;
+  padding:6px 8px!important;
+  border:0!important;
+  background:transparent!important;
+  color:#111!important;
+  text-align:center!important;
+  box-sizing:border-box!important;
+}
+.excel-signatures .signature-stage input:focus{
+  background:rgba(255,255,255,.72)!important;
+  outline:2px solid rgba(var(--accent-rgb),.28)!important;
+  outline-offset:-2px!important;
+}
+.excel-signatures .signature-cell>span{
+  min-height:30px!important;
+  display:grid!important;
+  place-items:center!important;
+  background:#fff!important;
+  color:#111!important;
+  border:0!important;
+}
+.dark .excel-signatures .signature-stage,
+.dark .excel-signatures .signature-cell,
+.dark .excel-signatures .signature-cell>span{background:#fff!important;color:#111!important}
