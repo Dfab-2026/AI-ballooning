@@ -87,6 +87,7 @@ def detect_characteristics(image_path: str):
 
 
 def export_ballooned_pdf(src: str, out: str, balloons, page_index: int = 0) -> None:
+    """Export circle-only numbered balloons: no leader lines and no arrows."""
     ext = os.path.splitext(src)[1].lower()
     if ext == '.pdf':
         import fitz
@@ -98,63 +99,22 @@ def export_ballooned_pdf(src: str, out: str, balloons, page_index: int = 0) -> N
         output.insert_pdf(source, from_page=page_index, to_page=page_index)
         page = output[0]
         for b in balloons:
-            # Preview is rendered at 2x PDF coordinates.
             x, y = float(b['x']) / 2, float(b['y']) / 2
-            tx = float(b.get('target_x') if b.get('target_x') is not None else b['x']) / 2
-            ty = float(b.get('target_y') if b.get('target_y') is not None else b['y']) / 2
             r = 10
-            # Preserve each balloon's own adaptive leader length. The analyzer already
-            # increases height only when needed, by no more than ~0.5 cm.
-            import math
             page_rect = page.rect
             x = min(max(r + 2, x), page_rect.width - r - 2)
             y = min(max(r + 2, y), page_rect.height - r - 2)
-            # The target is protected white space above the measurement text, never on text or CAD linework.
-            # The arrowhead lands directly on that target line.
-            dx, dy = tx-x, ty-y
-            dist = math.hypot(dx, dy) or 1.0
-            ux, uy = dx/dist, dy/dist
-            start_gap = r + 1.0
-            sx, sy = x + ux*start_gap, y + uy*start_gap
-            # Keep a small visible gap before the analyzer-selected line.
-            # Preview coordinates are rendered at 2x, so ~3.5 PDF points mirrors
-            # the ~7 px editor clearance without changing the leader size.
-            end_gap = 0.0
-            ex, ey = tx - ux*end_gap, ty - uy*end_gap
-            page.draw_line((sx, sy), (ex, ey), color=(0.04, 0.36, 0.23), width=1.05)
-            # Arrowhead points to the selected drawing/dimension line but stops just before it.
-            ang = math.atan2(ey-sy, ex-sx)
-            ah = 3.8
-            p1 = (ex-ah*math.cos(ang-0.55), ey-ah*math.sin(ang-0.55))
-            p2 = (ex-ah*math.cos(ang+0.55), ey-ah*math.sin(ang+0.55))
-            page.draw_line((ex, ey), p1, color=(0.04,0.36,0.23), width=1.05)
-            page.draw_line((ex, ey), p2, color=(0.04,0.36,0.23), width=1.05)
             page.draw_circle((x, y), r, color=(0.04, 0.36, 0.23), fill=(1, 1, 1), width=1.2)
             label = str(b['number'])
-            width = fitz.get_text_length(label, fontsize=8)
             page.insert_text((x - fitz.get_text_length(label, fontname='hebo', fontsize=10) / 2, y + 3.5), label, fontname='hebo', fontsize=10, color=(0.04, 0.36, 0.23))
         output.save(out)
-        output.close()
-        source.close()
-        return
+        output.close(); source.close(); return
 
     im = Image.open(src).convert('RGB')
     dr = ImageDraw.Draw(im)
     for b in balloons:
         x, y = float(b['x']), float(b['y'])
-        tx = float(b.get('target_x') if b.get('target_x') is not None else x)
-        ty = float(b.get('target_y') if b.get('target_y') is not None else y)
         r = 18
-        import math
-        dx,dy=tx-x,ty-y; dist=math.hypot(dx,dy) or 1.0; ux,uy=dx/dist,dy/dist
-        start_gap=r+1
-        sx,sy=x+ux*start_gap,y+uy*start_gap
-        end_gap=7
-        ex,ey=tx-ux*end_gap,ty-uy*end_gap
-        dr.line((sx, sy, ex, ey), fill=(11,93,59), width=2)
-        ang = math.atan2(ey-sy, ex-sx); ah = 7
-        p1=(ex-ah*math.cos(ang-0.55),ey-ah*math.sin(ang-0.55)); p2=(ex-ah*math.cos(ang+0.55),ey-ah*math.sin(ang+0.55))
-        dr.line((ex,ey,p1[0],p1[1]), fill=(11,93,59), width=2); dr.line((ex,ey,p2[0],p2[1]), fill=(11,93,59), width=2)
         dr.ellipse((x-r, y-r, x+r, y+r), fill='white', outline=(11,93,59), width=3)
         try:
             from PIL import ImageFont
@@ -163,9 +123,9 @@ def export_ballooned_pdf(src: str, out: str, balloons, page_index: int = 0) -> N
             font = None
         label = str(b['number'])
         try:
-            box = dr.textbbox((0,0), label, font=font)
-            tw, th = box[2]-box[0], box[3]-box[1]
+            box = dr.textbbox((0,0), label, font=font); tw, th = box[2]-box[0], box[3]-box[1]
         except Exception:
             tw, th = 10, 12
         dr.text((x-tw/2, y-th/2-1), label, fill=(11,93,59), font=font)
     im.save(out, 'PDF', resolution=150)
+

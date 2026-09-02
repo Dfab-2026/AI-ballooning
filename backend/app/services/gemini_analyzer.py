@@ -82,7 +82,7 @@ Include when visibly present:
 
 Do NOT create characteristics from drawing number, revision, sheet number, scale, dates, quantities, material names, company/title-block administrative text, BOM item numbers, random standalone digits, or duplicate text belonging to the same characteristic.
 
-For each characteristic also return a short description based only on visible nearby feature context (for example Overall length, Hole diameter, Radius, Thread callout). If the feature name is not visible or inferable without guessing, use a generic type-based description. Return its exact visible text and a balloon target in normalized coordinates where x=0 is left, x=1000 is right, y=0 is top, y=1000 is bottom. For balloon placement, the arrow tip must finish in CLEAN WHITE SPACE immediately ABOVE the printed measurement/callout text, with a visible gap from the tops of the letters/numbers. Do NOT put the arrow tip on the measurement characters, tolerance characters, symbols, dimension line, extension line, feature outline, or any other drawing stroke. Treat every digit, decimal point, tolerance, diameter/radius symbol, GD&T text, note, word, and nearby CAD line as a protected NO-TOUCH zone. Prefer a target roughly 8-14 image pixels above the visual top of the measurement text, centered near the characteristic so the arrow clearly indicates that measurement without touching it. If the space directly above is occupied by geometry or another annotation, use the nearest clear white-space position above-left or above-right; only if no safe upper space exists may you use clear white space below the measurement. The leader must remain in open white space and must not cross any text. Return each real characteristic once.
+For each characteristic also return a short description based only on visible nearby feature context (for example Overall length, Hole diameter, Radius, Thread callout). If the feature name is not visible or inferable without guessing, use a generic type-based description. Return its exact visible text and a balloon target in normalized coordinates where x=0 is left, x=1000 is right, y=0 is top, y=1000 is bottom. For balloon placement, use CIRCLE-ONLY ballooning: there must be NO leader line and NO arrow. Return a target point that is the CENTER of the numbered balloon circle. Place that center in clean white space close to its measurement/callout, preferably directly above it. Keep enough clearance for a normal balloon circle (about 18 preview pixels radius): the circle edge must not touch or cover any digit, decimal point, tolerance, diameter/radius symbol, GD&T text, note, word, dimension line, extension line, feature outline, or other drawing stroke. Prefer the circle center about 28-36 preview pixels above the visual top of the measurement text. If that space is occupied, use the nearest clear above-left or above-right position; if no safe upper position exists, place the circle below the measurement in clear white space. Keep each circle visually associated with its own measurement and avoid collisions with other balloon circles. Return each real characteristic once.
 - Exclude general notes, welding/process instructions, BOM rows, part labels, view labels, section labels, zone coordinates, page borders, title blocks and revision tables unless the text itself is an inspection characteristic.
 - Standalone numbers are NOT characteristics unless they are clearly part of a visible dimension/callout.
 - When uncertain, omit the candidate. Precision is more important than recall.
@@ -127,17 +127,18 @@ def _learning_context(limit: int = 8) -> str:
 
 
 def _balloon_offset(tx: float, ty: float, width: int, height: int, occupied: list[tuple[float, float]]) -> tuple[float, float]:
-    """Conventional default balloon placement with a normal circle and ~1 cm leader."""
-    margin = 28.0
-    centre_distance = 57.0
-    directions = ((0.75, -0.66), (-0.75, -0.66), (0.75, 0.66), (-0.75, 0.66))
+    """Circle-only balloon placement close to the analyzed measurement/callout."""
+    margin = 24.0
+    base_x = min(max(margin, tx), max(margin, width - margin))
+    base_y = min(max(margin, ty), max(margin, height - margin))
+    # Prefer the model-selected clear point; nudge only when another balloon circle is too close.
+    offsets = ((0, 0), (34, 0), (-34, 0), (0, -34), (0, 34), (34, -24), (-34, -24), (34, 24), (-34, 24))
     candidates = []
-    for dx, dy in directions:
-        x = min(max(margin, tx + dx * centre_distance), max(margin, width - margin))
-        y = min(max(margin, ty + dy * centre_distance), max(margin, height - margin))
-        collision = sum(1 for ox, oy in occupied if (x-ox)**2 + (y-oy)**2 < 64**2)
-        dist = ((x-tx)**2 + (y-ty)**2) ** 0.5
-        candidates.append((collision * 1000 + abs(dist-centre_distance), x, y))
+    for ox, oy in offsets:
+        x = min(max(margin, base_x + ox), max(margin, width - margin))
+        y = min(max(margin, base_y + oy), max(margin, height - margin))
+        collision = sum(1 for px, py in occupied if (x-px)**2 + (y-py)**2 < 46**2)
+        candidates.append((collision * 1000 + abs(ox) + abs(oy), x, y))
     candidates.sort(key=lambda item: item[0])
     return candidates[0][1], candidates[0][2]
 

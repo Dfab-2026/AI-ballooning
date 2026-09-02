@@ -333,33 +333,24 @@ function leaderEndpoints(b){
 }
 
 function render(){
-  const svg=$('overlay');svg.innerHTML=`<defs><marker id="balloonArrowGreen" markerWidth="7" markerHeight="7" refX="6.5" refY="3.5" orient="auto" markerUnits="strokeWidth"><path d="M0,0 L7,3.5 L0,7 z" fill="#0b5d3b"/></marker><marker id="balloonArrowRed" markerWidth="7" markerHeight="7" refX="6.5" refY="3.5" orient="auto" markerUnits="strokeWidth"><path d="M0,0 L7,3.5 L0,7 z" fill="#ef4444"/></marker></defs>`;
+  const svg=$('overlay');svg.innerHTML='';
   balloons.forEach((b,i)=>{
     const g=document.createElementNS('http://www.w3.org/2000/svg','g');g.setAttribute('class','balloon'+(selected===i?' selected':''));g.dataset.index=i;
-    const ep=leaderEndpoints(b);g.innerHTML=`<line class="leader" x1="${ep.x1}" y1="${ep.y1}" x2="${ep.x2}" y2="${ep.y2}" marker-end="url(#${selected===i?'balloonArrowRed':'balloonArrowGreen'})"/><circle class="target-handle" cx="${b.target_x}" cy="${b.target_y}" r="5"/><circle class="balloon-body" cx="${b.x}" cy="${b.y}" r="18"/><text x="${b.x}" y="${b.y}">${b.number}</text>`;
-    const body=g.querySelector('.balloon-body'),target=g.querySelector('.target-handle'),leader=g.querySelector('.leader');
-    const startDrag=(kind,e)=>{if(mode!=='select')return;e.preventDefault();e.stopPropagation();selected=i;snapshot();const p=svgPoint(e);drag={kind,index:i,pointerId:e.pointerId,start:p,dx:p.x-b.x,dy:p.y-b.y,startX:b.x,startY:b.y,startTargetX:b.target_x,startTargetY:b.target_y};g.setPointerCapture?.(e.pointerId);svg.querySelectorAll('.balloon').forEach(x=>{x.classList.remove('selected');const ln=x.querySelector('.leader');if(ln)ln.setAttribute('marker-end','url(#balloonArrowGreen)')});g.classList.add('selected');leader.setAttribute('marker-end','url(#balloonArrowRed)');updatePanels()};
-    body.addEventListener('pointerdown',e=>startDrag('body',e));
-    target.addEventListener('pointerdown',e=>startDrag('target',e));
-    leader.addEventListener('pointerdown',e=>startDrag('leader',e));
-    g.addEventListener('pointermove',e=>{if(!drag||drag.index!==i||drag.pointerId!==e.pointerId)return;const p=svgPoint(e);if(drag.kind==='target'){const q=clampDrawingPoint(p);b.target_x=q.x;b.target_y=q.y}else if(drag.kind==='leader'){const dx=p.x-drag.start.x,dy=p.y-drag.start.y;const bodyP=clampDrawingPoint({x:drag.startX+dx,y:drag.startY+dy}),targetP=clampDrawingPoint({x:drag.startTargetX+dx,y:drag.startTargetY+dy});const adjX=bodyP.x-(drag.startX+dx),adjY=bodyP.y-(drag.startY+dy);b.x=bodyP.x;b.y=bodyP.y;b.target_x=Math.max(0,Math.min(naturalWidth,targetP.x+adjX));b.target_y=Math.max(0,Math.min(naturalHeight,targetP.y+adjY))}else{const q=clampDrawingPoint({x:p.x-drag.dx,y:p.y-drag.dy});b.x=q.x;b.y=q.y}updateOverlayOnly(i)});
+    g.innerHTML=`<circle class="balloon-body" cx="${b.x}" cy="${b.y}" r="18"/><text x="${b.x}" y="${b.y}">${b.number}</text>`;
+    const body=g.querySelector('.balloon-body');
+    const startDrag=(e)=>{if(mode!=='select')return;e.preventDefault();e.stopPropagation();selected=i;snapshot();const p=svgPoint(e);drag={kind:'body',index:i,pointerId:e.pointerId,dx:p.x-b.x,dy:p.y-b.y};g.setPointerCapture?.(e.pointerId);svg.querySelectorAll('.balloon').forEach(x=>x.classList.remove('selected'));g.classList.add('selected');updatePanels()};
+    body.addEventListener('pointerdown',startDrag);
+    g.addEventListener('pointermove',e=>{if(!drag||drag.index!==i||drag.pointerId!==e.pointerId)return;const p=svgPoint(e);const q=clampDrawingPoint({x:p.x-drag.dx,y:p.y-drag.dy});b.x=q.x;b.y=q.y;updateOverlayOnly(i)});
     const endDrag=e=>{if(!drag||drag.index!==i)return;drag=null;try{g.releasePointerCapture?.(e.pointerId)}catch{}render()};
     g.addEventListener('pointerup',endDrag);g.addEventListener('pointercancel',endDrag);svg.appendChild(g)
   });updatePanels();saveCurrentState()
 }
-function updateOverlayOnly(i){const g=$('overlay').querySelector(`g[data-index="${i}"]`),b=balloons[i];if(!g)return;const line=g.querySelector('.leader'),ep=leaderEndpoints(b);line.setAttribute('x1',ep.x1);line.setAttribute('y1',ep.y1);line.setAttribute('x2',ep.x2);line.setAttribute('y2',ep.y2);const body=g.querySelector('.balloon-body'),target=g.querySelector('.target-handle');body.setAttribute('cx',b.x);body.setAttribute('cy',b.y);target.setAttribute('cx',b.target_x);target.setAttribute('cy',b.target_y);const t=g.querySelector('text');t.setAttribute('x',b.x);t.setAttribute('y',b.y)}
+function updateOverlayOnly(i){const g=$('overlay').querySelector(`g[data-index="${i}"]`),b=balloons[i];if(!g)return;const body=g.querySelector('.balloon-body');body.setAttribute('cx',b.x);body.setAttribute('cy',b.y);const t=g.querySelector('text');t.setAttribute('x',b.x);t.setAttribute('y',b.y)}
 function svgPoint(e){const rect=$('overlay').getBoundingClientRect(),sx=$('overlay').viewBox.baseVal.width/rect.width,sy=$('overlay').viewBox.baseVal.height/rect.height;return{x:(e.clientX-rect.left)*sx,y:(e.clientY-rect.top)*sy}}
 function manualBalloonPosition(p){
-  // Conventional default balloon: normal circle with ~1 cm leader.
-  const margin=24,centreDistance=57;
-  const dirs=[[.75,-.66],[-.75,-.66],[.75,.66],[-.75,.66]];
-  const candidates=dirs.map(([dx,dy])=>{
-    const c={x:Math.max(margin,Math.min(naturalWidth-margin,p.x+dx*centreDistance)),y:Math.max(margin,Math.min(naturalHeight-margin,p.y+dy*centreDistance))};
-    const collision=balloons.filter(b=>Math.hypot(c.x-b.x,c.y-b.y)<64).length;
-    return {c,score:collision*1000+Math.abs(Math.hypot(c.x-p.x,c.y-p.y)-centreDistance)};
-  });
-  candidates.sort((a,b)=>a.score-b.score);
-  return candidates[0]?.c||{x:Math.max(margin,Math.min(naturalWidth-margin,p.x+50)),y:Math.max(margin,Math.min(naturalHeight-margin,p.y-45))};
+  // Circle-only ballooning: place the numbered circle exactly where the user clicks.
+  const margin=24;
+  return {x:Math.max(margin,Math.min(naturalWidth-margin,p.x)),y:Math.max(margin,Math.min(naturalHeight-margin,p.y))};
 }
 
 let stagePan=null;
