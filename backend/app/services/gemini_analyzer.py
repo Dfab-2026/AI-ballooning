@@ -69,9 +69,9 @@ Analyze each supplied engineering drawing independently and identify ALL charact
 For every drawing, also read as many clearly visible title-block fields as possible: drawing_number, part_name/title, customer, company_name (manufacturer/supplier/company printed in the title block), revision, drawing_date, quantity, material, scale, sheet_number, project_name, po_number/order number, drawn_by, checked_by, and approved_by. Customer should be the customer/client/company for whom the part is made when that is explicitly labelled; if only one relevant company name is visible and no separate customer is labelled, return it in company_name and customer may be null. Return drawing_date as YYYY-MM-DD when the date is clearly readable. Preserve quantity text such as '2 NOS'. Do not confuse revision, sheet number, date, or BOM item number with drawing_number. If a field is not clearly visible, return null rather than guessing.
 
 Include when visibly present:
-- linear dimensions
+- linear dimensions, INCLUDING plain numeric dimensions such as 10, 25, 64, 100, 1363.4 when the number is visibly attached to a dimension line / extension lines / dimension arrowheads
 - diameter dimensions (Ø / ⌀)
-- radius dimensions (R)
+- radius dimensions (R), including R2, R5, R10, R15 and similar radius callouts
 - angular dimensions
 - explicit tolerances and limit dimensions
 - hole callouts, counterbore/countersink/depth callouts
@@ -80,12 +80,15 @@ Include when visibly present:
 - datum feature identifiers when inspection-relevant
 - surface-finish requirements
 
-Do NOT create characteristics from drawing number, revision, sheet number, scale, dates, quantities, material names, company/title-block administrative text, BOM item numbers, random standalone digits, or duplicate text belonging to the same characteristic.
+Do NOT create characteristics from drawing number, revision, sheet number, scale, dates, quantities, material names, company/title-block administrative text, BOM item numbers, random standalone digits, or duplicate text belonging to the same characteristic. IMPORTANT: a plain number by itself IS a valid characteristic when it is visibly the value of a dimension and is connected to or centered on a dimension line, extension lines, or dimension arrowheads. Examples: 10, 16, 24, 50, 64, 100. Do not confuse those dimensional values with item numbers, zone numbers, view labels, sheet numbers, or title-block values.
 
-For each characteristic also return a short description based only on visible nearby feature context (for example Overall length, Hole diameter, Radius, Thread callout). If the feature name is not visible or inferable without guessing, use a generic type-based description. Return its exact visible text and a balloon target in normalized coordinates where x=0 is left, x=1000 is right, y=0 is top, y=1000 is bottom. For balloon placement, use CIRCLE-ONLY ballooning: there must be NO leader line and NO arrow. Return a target point that is the CENTER of the numbered balloon circle. Place that center in clean white space close to its measurement/callout, preferably directly above it. Keep enough clearance for a normal balloon circle (about 18 preview pixels radius): the circle edge must not touch or cover any digit, decimal point, tolerance, diameter/radius symbol, GD&T text, note, word, dimension line, extension line, feature outline, or other drawing stroke. Prefer the circle center about 28-36 preview pixels above the visual top of the measurement text. If that space is occupied, use the nearest clear above-left or above-right position; if no safe upper position exists, place the circle below the measurement in clear white space. Keep each circle visually associated with its own measurement and avoid collisions with other balloon circles. Return each real characteristic once.
+For each characteristic also return a short description based only on visible nearby feature context (for example Overall length, Hole diameter, Radius, Thread callout). If the feature name is not visible or inferable without guessing, use a generic type-based description. Return its exact visible text and a balloon target in normalized coordinates where x=0 is left, x=1000 is right, y=0 is top, y=1000 is bottom. For balloon placement, use CIRCLE-ONLY ballooning: there must be NO leader line and NO arrow. Return a target point that is the CENTER of the numbered balloon circle. The circle must sit only in EMPTY WHITE SPACE beside the reading, above the reading, or below the reading. STRICTLY NEVER place the circle over or touching any digit, decimal point, tolerance, diameter/radius symbol, GD&T text, note, word, dimension line, extension line, feature outline, centerline, or other drawing stroke. Keep a visible white safety gap around the entire circle edge. For a normal 18 px radius preview balloon, leave at least about 7-10 px of additional white clearance, so the nearest drawing/text pixel is roughly 25-28 px or more from the circle center. Prefer a clear position directly above the reading; if the top is occupied, try the nearest clear right/left side; if those are occupied, use a clear position below. Never squeeze a circle between characters or between a reading and a line. Keep each circle visually associated with its own measurement and avoid collisions with other balloon circles. Return each real characteristic once.
 - Exclude general notes, welding/process instructions, BOM rows, part labels, view labels, section labels, zone coordinates, page borders, title blocks and revision tables unless the text itself is an inspection characteristic.
-- Standalone numbers are NOT characteristics unless they are clearly part of a visible dimension/callout.
-- When uncertain, omit the candidate. Precision is more important than recall.
+- Plain numeric readings ARE characteristics when they clearly represent a dimension on the drawing (for example 10, 16, 24, 50, 64, 100 beside/between dimension arrows or extension lines).
+- Radius callouts beginning with R are always inspection characteristics when visibly attached to a radius/arc leader (for example R2, R5, R10, R15).
+- Standalone numbers that do NOT represent a dimension/callout are NOT characteristics.
+- For every plain numeric candidate, inspect the nearby linework before including it: include only when the number clearly belongs to a dimension line / extension line / arrowhead pair.
+- When uncertain whether a plain number is a dimension or a label/item number, omit it. Precision is more important than recall.
 
 Prefer precision over guessing.
 '''
@@ -126,21 +129,69 @@ def _learning_context(limit: int = 8) -> str:
     return '\n'.join(lines) if len(lines) > 1 else ''
 
 
-def _balloon_offset(tx: float, ty: float, width: int, height: int, occupied: list[tuple[float, float]]) -> tuple[float, float]:
-    """Circle-only balloon placement close to the analyzed measurement/callout."""
-    margin = 24.0
+def _ink_count_in_circle(gray: Image.Image, cx: float, cy: float, radius: int = 27, threshold: int = 236) -> int:
+    """Count non-white drawing pixels inside the balloon + safety-clearance disk."""
+    w, h = gray.size
+    left = max(0, int(round(cx - radius)))
+    top = max(0, int(round(cy - radius)))
+    right = min(w, int(round(cx + radius + 1)))
+    bottom = min(h, int(round(cy + radius + 1)))
+    if right <= left or bottom <= top:
+        return 10**9
+    crop = gray.crop((left, top, right, bottom))
+    pixels = crop.load()
+    r2 = radius * radius
+    count = 0
+    for yy in range(crop.height):
+        py = top + yy
+        dy = py - cy
+        for xx in range(crop.width):
+            px = left + xx
+            dx = px - cx
+            if dx * dx + dy * dy <= r2 and pixels[xx, yy] < threshold:
+                count += 1
+    return count
+
+
+def _balloon_offset(tx: float, ty: float, width: int, height: int,
+                    occupied: list[tuple[float, float]], gray: Image.Image | None = None) -> tuple[float, float]:
+    """Place a circle-only balloon in verified blank space near its measurement.
+
+    Preference order is above -> side -> below.  The full circle plus a safety
+    halo is checked against actual dark pixels from the drawing so the circle
+    cannot sit on top of readings or CAD linework.
+    """
+    circle_radius = 18.0
+    white_gap = 9.0
+    safe_radius = int(round(circle_radius + white_gap))
+    margin = safe_radius + 3.0
     base_x = min(max(margin, tx), max(margin, width - margin))
     base_y = min(max(margin, ty), max(margin, height - margin))
-    # Prefer the model-selected clear point; nudge only when another balloon circle is too close.
-    offsets = ((0, 0), (34, 0), (-34, 0), (0, -34), (0, 34), (34, -24), (-34, -24), (34, 24), (-34, 24))
+
+    # Search close to the model proposal but keep a real blank-space halo.
+    # Top is preferred, then right/left, then bottom. Larger offsets are only
+    # used if the closer position contains text or drawing strokes.
+    dists = (0, 28, 34, 40, 46, 54, 62)
+    offsets = [(0, 0)]
+    offsets += [(0, -d) for d in dists[1:]]
+    offsets += [(d, 0) for d in dists[1:]] + [(-d, 0) for d in dists[1:]]
+    offsets += [(0, d) for d in dists[1:]]
+    offsets += [(d, -d) for d in (30, 38, 46)] + [(-d, -d) for d in (30, 38, 46)]
+    offsets += [(d, d) for d in (30, 38, 46)] + [(-d, d) for d in (30, 38, 46)]
+
     candidates = []
-    for ox, oy in offsets:
+    for order, (ox, oy) in enumerate(offsets):
         x = min(max(margin, base_x + ox), max(margin, width - margin))
         y = min(max(margin, base_y + oy), max(margin, height - margin))
-        collision = sum(1 for px, py in occupied if (x-px)**2 + (y-py)**2 < 46**2)
-        candidates.append((collision * 1000 + abs(ox) + abs(oy), x, y))
+        collision = sum(1 for px, py in occupied if (x-px)**2 + (y-py)**2 < (2*circle_radius + 10)**2)
+        ink = _ink_count_in_circle(gray, x, y, safe_radius) if gray is not None else 0
+        # Any dark pixel inside the safety disk is heavily penalized. Among
+        # equally clean locations, preserve the preferred top/side/bottom order.
+        score = ink * 100000 + collision * 10000000 + order * 10 + abs(ox) + abs(oy)
+        candidates.append((score, ink, collision, x, y))
+
     candidates.sort(key=lambda item: item[0])
-    return candidates[0][1], candidates[0][2]
+    return candidates[0][3], candidates[0][4]
 
 
 def _prepare_image(path: str):
@@ -210,10 +261,14 @@ def _looks_like_inspection_characteristic(c) -> bool:
     admin_terms=('DRAWING NO','DRAWING NUMBER','DWG NO','REV','REVISION','SHEET','SCALE','DATE','QTY','QUANTITY','MATERIAL','DRAWN BY','CHECKED BY','APPROVED BY','CUSTOMER','PROJECT','PO NO','PART NAME','TITLE')
     if any(term in upper for term in admin_terms):
         return False
-    # Reject bare item/zone numbers and other common false positives.
-    if re.fullmatch(r'[A-Z]?\s*\d{1,4}[A-Z]?', upper):
-        return False
     ctype=str(getattr(c,'type','OTHER')).upper()
+    # Plain numeric readings (e.g. 10, 24, 64, 100) are legitimate drawing
+    # dimensions when the vision model explicitly classifies them as dimensional.
+    # Still reject bare numeric text for non-dimensional types to avoid ballooning
+    # item numbers, zones, sheet numbers, and other administrative labels.
+    if re.fullmatch(r'[A-Z]?\s*\d+(?:\.\d+)?[A-Z]?', upper):
+        if ctype not in {'DIM','TOL','DIA','RAD','ANG'}:
+            return False
     if ctype in {'GD&T','SURFACE','DATUM','THREAD','HOLE'}:
         return True
     # Dimension-like text must visibly carry numeric/symbolic dimensional content.
@@ -285,19 +340,23 @@ def _to_output(parsed, width:int, height:int, image_path: str | None = None):
     detected=[c for c in parsed.characteristics if c.confidence>=min_conf and _looks_like_inspection_characteristic(c)]
     detected.sort(key=lambda c:(c.center_y,c.center_x))
     output=[]; occupied=[]; seen=set()
+    gray = None
+    if image_path and os.path.exists(image_path):
+        try:
+            with Image.open(image_path) as src:
+                gray = src.convert('L').copy()
+        except Exception:
+            gray = None
     for c in detected:
         nx=min(1000,max(0,float(c.center_x))); ny=min(1000,max(0,float(c.center_y)))
         tx=nx/1000*width; ty=ny/1000*height
-        # The model target is intentionally a clear white-space point above the
-        # measurement text. Do not snap it back onto CAD linework. A small extra
-        # upward clearance keeps the arrowhead visibly off the glyphs even when
-        # the model chooses the text boundary too closely.
-        safe_clearance = max(6.0, min(12.0, min(width, height) * 0.006))
-        ty = max(4.0, ty - safe_clearance)
+        # The model proposes a nearby clear circle center. A deterministic
+        # pixel-level safety scan below chooses the nearest truly blank location
+        # (top, side, or bottom) so the circle cannot touch the reading/linework.
         dedupe=(c.text.strip().upper(),round(tx/18),round(ty/18))
         if dedupe in seen: continue
         seen.add(dedupe)
-        x,y=_balloon_offset(tx,ty,width,height,occupied); occupied.append((x,y))
+        x,y=_balloon_offset(tx,ty,width,height,occupied,gray); occupied.append((x,y))
         output.append({'number':len(output)+1,'text':c.text.strip(),'type':c.type,'x':x,'y':y,'target_x':tx,'target_y':ty,'confidence':c.confidence,'description':(c.description or '').strip(),'source':'analysis'})
     return output
 
