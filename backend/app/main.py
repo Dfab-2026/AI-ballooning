@@ -8,6 +8,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 import uuid
 import zipfile
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import List, Optional
 import hashlib
 
@@ -139,6 +140,8 @@ class ProjectDrawingExport(BaseModel):
     balloons: List[Balloon]
     original_balloons: List[Balloon] = []
     drawing_number: str = ''
+    source_filename: str = ''
+    page_index: int = 0
 
 
 class ProjectExportPayload(BaseModel):
@@ -931,33 +934,47 @@ def learn(drawing_id: str, payload: LearnPayload):
 def inspection_report(drawing_id: str, payload: InspectionReportPayload):
     if payload.drawing_id != drawing_id:
         raise HTTPException(400, 'Drawing ID mismatch')
-    _drawing_meta(drawing_id)
-    out_dir = os.path.join(DATA, 'inspection_reports')
-    os.makedirs(out_dir, exist_ok=True)
-    filename = _inspection_filename(payload, 'drawing')
-    out = os.path.join(out_dir, f'{drawing_id}_{filename}')
-    _build_inspection_workbook(payload, out)
-    return FileResponse(out, media_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', filename=filename)
+    # Stateless Excel export. The edited report payload is the source of truth;
+    # do not require a drawing meta file from a previous serverless invocation.
+    tmp_dir = tempfile.mkdtemp(prefix='inspection_one_')
+    try:
+        filename = _inspection_filename(payload, 'drawing')
+        out = os.path.join(tmp_dir, filename)
+        _build_inspection_workbook(payload, out)
+        data = Path(out).read_bytes()
+        return Response(
+            content=data,
+            media_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            headers={'Content-Disposition': f'attachment; filename="{filename}"'},
+        )
+    finally:
+        shutil.rmtree(tmp_dir, ignore_errors=True)
 
 
 @app.post('/inspection-reports/{project_id}')
 def inspection_reports(project_id: str, payload: InspectionProjectPayload):
-    _read_manifest(project_id)
+    # Stateless export: report payload is the source of truth. Do not depend on
+    # serverless /tmp project manifests that may live on another Vercel instance.
     if not payload.reports:
         raise HTTPException(400, 'No inspection reports supplied')
-    out_dir = os.path.join(DATA, f'{project_id}_inspection_reports')
-    shutil.rmtree(out_dir, ignore_errors=True)
-    os.makedirs(out_dir, exist_ok=True)
-    zip_path = os.path.join(DATA, f'{project_id}_inspection_reports.zip')
-    with zipfile.ZipFile(zip_path, 'w', compression=zipfile.ZIP_DEFLATED) as zf:
-        for index, report in enumerate(payload.reports, start=1):
-            _drawing_meta(report.drawing_id)
-            filename = _inspection_filename(report, f'Drawing_{index:02d}')
-            out = os.path.join(out_dir, filename)
-            _build_inspection_workbook(report, out)
-            zf.write(out, arcname=filename)
-    filename = _safe_name(payload.project_name, 'inspection_reports') + '_inspection_reports.zip'
-    return FileResponse(zip_path, media_type='application/zip', filename=filename)
+    tmp_dir = tempfile.mkdtemp(prefix='inspection_bulk_')
+    try:
+        zip_path = os.path.join(tmp_dir, 'inspection_reports.zip')
+        with zipfile.ZipFile(zip_path, 'w', compression=zipfile.ZIP_DEFLATED) as zf:
+            for index, report in enumerate(payload.reports, start=1):
+                filename = _inspection_filename(report, f'Drawing_{index:02d}')
+                out = os.path.join(tmp_dir, f'{index:03d}_{filename}')
+                _build_inspection_workbook(report, out)
+                zf.write(out, arcname=filename)
+        data = Path(zip_path).read_bytes()
+        filename = _safe_name(payload.project_name, 'inspection_reports') + '_inspection_reports.zip'
+        return Response(
+            content=data,
+            media_type='application/zip',
+            headers={'Content-Disposition': f'attachment; filename="{filename}"'},
+        )
+    finally:
+        shutil.rmtree(tmp_dir, ignore_errors=True)
 
 
 @app.post('/final-package/{project_id}')
@@ -1018,6 +1035,108 @@ def final_package(project_id: str, payload: FinalPackagePayload):
         raise HTTPException(400, 'No reviewed drawing/report pairs were available to export')
     filename = _safe_name(payload.project_name, 'inspection_project') + '_final_package.zip'
     return FileResponse(zip_path, media_type='application/zip', filename=filename)
+
+
+@app.post('/export-one-upload')
+async def export_one_upload(
+    file: UploadFile = File(...),
+    page_index: int = Form(0),
+    payload_json: str = Form(...),
+):
+    """Stateless single-PDF export using the browser's original source file.
+
+    This is production-safe on Vercel: the edited balloon payload and original
+    drawing arrive in the same request, so no prior /tmp manifest/source is needed.
+    """
+    try:
+        payload = DrawingExportPayload.model_validate_json(payload_json)
+    except Exception as exc:
+        raise HTTPException(400, f'Invalid edited drawing payload: {exc}')
+    ext = os.path.splitext(file.filename or '')[1].lower()
+    if ext not in ['.pdf', '.png', '.jpg', '.jpeg']:
+        raise HTTPException(400, 'Original PDF, PNG, JPG or JPEG drawing is required')
+    tmp_dir = tempfile.mkdtemp(prefix='balloon_export_one_')
+    try:
+        src = os.path.join(tmp_dir, 'source' + ext)
+        with open(src, 'wb') as out:
+            shutil.copyfileobj(file.file, out)
+        final_balloons = _renumber_balloons(payload.balloons)
+        pdf_path = os.path.join(tmp_dir, 'ballooned.pdf')
+        export_ballooned_pdf(src, pdf_path, [b.model_dump() for b in final_balloons], int(page_index or 0))
+        data = Path(pdf_path).read_bytes()
+        name = _safe_name(payload.drawing_number, 'drawing') + '_ballooned.pdf'
+        return Response(
+            content=data,
+            media_type='application/pdf',
+            headers={'Content-Disposition': f'attachment; filename="{name}"'},
+        )
+    finally:
+        shutil.rmtree(tmp_dir, ignore_errors=True)
+
+
+@app.post('/export-project-upload')
+async def export_project_upload(
+    files: List[UploadFile] = File(...),
+    payload_json: str = Form(...),
+):
+    """Stateless bulk PDF ZIP generated strictly from the edited browser state."""
+    try:
+        payload = ProjectExportPayload.model_validate_json(payload_json)
+    except Exception as exc:
+        raise HTTPException(400, f'Invalid edited project payload: {exc}')
+    if not payload.drawings:
+        raise HTTPException(400, 'No edited drawings were supplied')
+
+    tmp_dir = tempfile.mkdtemp(prefix='balloon_export_project_')
+    try:
+        sources = {}
+        for idx, upload in enumerate(files):
+            ext = os.path.splitext(upload.filename or '')[1].lower()
+            if ext not in ['.pdf', '.png', '.jpg', '.jpeg']:
+                continue
+            path = os.path.join(tmp_dir, f'source_{idx}{ext}')
+            with open(path, 'wb') as out:
+                shutil.copyfileobj(upload.file, out)
+            # File names are what the upload manifest already stores on each drawing.
+            sources.setdefault(upload.filename or '', path)
+
+        zip_path = os.path.join(tmp_dir, 'ballooned_drawings.zip')
+        exported = 0
+        edited_json = []
+        with zipfile.ZipFile(zip_path, 'w', compression=zipfile.ZIP_DEFLATED) as zf:
+            for index, item in enumerate(payload.drawings, start=1):
+                src = sources.get(item.source_filename)
+                if not src:
+                    continue
+                final_balloons = _renumber_balloons(item.balloons)
+                display_number = item.drawing_number or f'Drawing_{index:02d}'
+                filename = _safe_name(display_number, f'Drawing_{index:02d}') + '_ballooned.pdf'
+                out = os.path.join(tmp_dir, f'export_{index:03d}.pdf')
+                export_ballooned_pdf(src, out, [b.model_dump() for b in final_balloons], int(item.page_index or 0))
+                zf.write(out, arcname=filename)
+                edited_json.append({
+                    'drawing_id': item.drawing_id,
+                    'drawing_number': display_number,
+                    'source_filename': item.source_filename,
+                    'page_index': int(item.page_index or 0),
+                    'balloons': [b.model_dump() for b in final_balloons],
+                })
+                exported += 1
+            zf.writestr('edited_balloons.json', json.dumps({
+                'project_name': payload.project_name,
+                'drawings': edited_json,
+            }, indent=2, ensure_ascii=False))
+        if not exported:
+            raise HTTPException(400, 'Original drawing files were not available for export')
+        data = Path(zip_path).read_bytes()
+        filename = _safe_name(payload.project_name, 'ballooned_drawings') + '.zip'
+        return Response(
+            content=data,
+            media_type='application/zip',
+            headers={'Content-Disposition': f'attachment; filename="{filename}"'},
+        )
+    finally:
+        shutil.rmtree(tmp_dir, ignore_errors=True)
 
 
 @app.post('/export-one/{drawing_id}')

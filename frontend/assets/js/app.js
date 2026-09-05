@@ -1,18 +1,34 @@
 const API=(location.hostname==='127.0.0.1'||location.hostname==='localhost')?'http://127.0.0.1:8000':'/api';
 const $=id=>document.getElementById(id);
 let selectedFiles=[], projectId=null, drawings=[], currentIndex=0, loadedDrawingIndex=null;
-let balloons=[], originalBalloons=[], selected=null, drag=null, zoom=1, mode='select', undoStack=[];
+let balloons=[], originalBalloons=[], selected=null, drag=null, zoom=1, mode='select', undoStack=[], redoStack=[];
 let naturalWidth=1,naturalHeight=1;
 let reports=[], reportIndex=0;
 
 function toast(message){const t=$('toast');t.textContent=message;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),2400)}
 function switchView(name){['uploadView','processingView','editorView','reportView'].forEach(v=>$(v).classList.add('hidden'));$(name).classList.remove('hidden')}
 function showError(msg){$('uploadError').textContent=msg;$('uploadError').classList.remove('hidden')}
-function snapshot(){undoStack.push(JSON.stringify(balloons));if(undoStack.length>40)undoStack.shift()}
+function snapshot(){undoStack.push(JSON.stringify(balloons));if(undoStack.length>40)undoStack.shift();redoStack=[]}
 function escapeHtml(s){return String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))}
 function normalizeBalloon(b){return{number:Number(b.number)||1,text:b.text||'',description:b.description||'',x:Number(b.x)||80,y:Number(b.y)||80,target_x:Number(b.target_x??b.x)||80,target_y:Number(b.target_y??b.y)||80,type:b.type||guessType(b.text),confidence:Number(b.confidence)||null,source:b.source||''}}
 function resequenceBalloons(list=balloons){list.forEach((b,i)=>b.number=i+1);return list}
+function moveBalloonToNumber(index,desired){
+  if(index<0||index>=balloons.length)return;
+  const target=Math.max(1,Math.min(balloons.length,Number(desired)||index+1));
+  const [item]=balloons.splice(index,1);
+  balloons.splice(target-1,0,item);
+  resequenceBalloons();
+  selected=balloons.indexOf(item);
+}
 function normalizedExportBalloons(list){return resequenceBalloons(JSON.parse(JSON.stringify(list||[])))}
+function editedProjectSnapshot(){
+  saveCurrentState();
+  return {project_id:projectId,project_name:$('projectTitle')?.textContent||$('projectName')?.value||'',saved_at:new Date().toISOString(),drawings:drawings.map(d=>({drawing_id:d.drawing_id,drawing_number:d.drawing_number||'',source_filename:d.source_filename||'',page_index:Number(d.page_index)||0,reviewed:!!d.reviewed,balloons:normalizedExportBalloons(d.balloons||[])}))};
+}
+function persistEditedState(){
+  if(!projectId)return;
+  try{localStorage.setItem('inspectballoon-edited-'+projectId,JSON.stringify(editedProjectSnapshot()))}catch(_){}
+}
 function guessType(t=''){if(/[Ø⌀]/.test(t))return'DIA';if(/^R/i.test(t))return'RAD';if(/°/.test(t))return'ANG';if(/[±+\-]/.test(t))return'TOL';return'DIM'}
 
 async function health(){try{const r=await fetch(API+'/health');if(!r.ok)throw 0;const j=await r.json();$('healthDot').classList.add('ok');$('healthText').textContent=j.analysis_configured?`Analysis ready · ${j.learning_examples||0} learned reviews`:'Analysis engine needs configuration'}catch{$('healthDot').classList.remove('ok');$('healthText').textContent='Analysis engine offline'}}
@@ -195,12 +211,16 @@ function cleanAnalysisError(message='Analysis failed'){
 
 function saveCurrentState(){
   if(loadedDrawingIndex===null||!drawings.length||!drawings[loadedDrawingIndex])return;
+  resequenceBalloons();
   drawings[loadedDrawingIndex].balloons=JSON.parse(JSON.stringify(balloons));
   drawings[loadedDrawingIndex].originalBalloons=JSON.parse(JSON.stringify(originalBalloons));
+  if(projectId){
+    try{localStorage.setItem('inspectballoon-edited-'+projectId,JSON.stringify({project_id:projectId,saved_at:new Date().toISOString(),drawings:drawings.map(d=>({drawing_id:d.drawing_id,drawing_number:d.drawing_number||'',source_filename:d.source_filename||'',page_index:Number(d.page_index)||0,reviewed:!!d.reviewed,balloons:normalizedExportBalloons(d.balloons||[])}))}))}catch(_){}
+  }
 }
 async function loadDrawing(index){
   if(loadedDrawingIndex!==null) saveCurrentState();
-  currentIndex=index;const d=drawings[index];balloons=JSON.parse(JSON.stringify(d.balloons||[]));originalBalloons=JSON.parse(JSON.stringify(d.originalBalloons||[]));selected=null;undoStack=[];zoom=1;
+  currentIndex=index;const d=drawings[index];balloons=JSON.parse(JSON.stringify(d.balloons||[]));originalBalloons=JSON.parse(JSON.stringify(d.originalBalloons||[]));selected=null;undoStack=[];redoStack=[];zoom=1;
   $('currentDrawingNumber').textContent=d.drawing_number||`Drawing ${index+1}`;$('pageLabel').textContent=`Page ${d.page_number||1}`;$('analysisEngine').textContent=d.error?'Analysis issue':'Auto analysis';updateCurrentReviewButton();
   $('drawing').src=API+d.preview_url;
   await new Promise((resolve,reject)=>{$('drawing').onload=resolve;$('drawing').onerror=reject});
@@ -368,8 +388,17 @@ $('deleteBtn').onclick=removeSelected;
 function removeSelected(){if(selected===null)return toast('Select a balloon first');snapshot();const n=balloons[selected].number;balloons.splice(selected,1);resequenceBalloons();selected=null;render();saveCurrentState();toast(`Balloon ${n} removed · sequence updated`)}
 document.addEventListener('keydown',e=>{if(e.key==='Delete'&&!$('editorView').classList.contains('hidden'))removeSelected()});
 $('renumberBtn').onclick=()=>{snapshot();balloons.sort((a,b)=>a.target_y-b.target_y||a.target_x-b.target_x);resequenceBalloons();selected=null;render();saveCurrentState();toast('Balloons renumbered')};
-$('undoBtn').onclick=()=>{if(!undoStack.length)return toast('Nothing to undo');balloons=JSON.parse(undoStack.pop());selected=null;render();toast('Last change undone')};
-$('applyPropsBtn').onclick=()=>{if(selected===null)return;snapshot();const b=balloons[selected];b.number=Math.max(1,parseInt($('propNumber').value)||b.number);b.text=$('propText').value;b.x=Number($('propX').value)||b.x;b.y=Number($('propY').value)||b.y;b.type=guessType(b.text);render();toast('Correction applied')};
+$('undoBtn').onclick=()=>{if(!undoStack.length)return toast('Nothing to undo');redoStack.push(JSON.stringify(balloons));balloons=JSON.parse(undoStack.pop());resequenceBalloons();selected=null;render();saveCurrentState();toast('Last change undone')};
+if($('redoBtn'))$('redoBtn').onclick=()=>{if(!redoStack.length)return toast('Nothing to redo');undoStack.push(JSON.stringify(balloons));balloons=JSON.parse(redoStack.pop());resequenceBalloons();selected=null;render();saveCurrentState();toast('Change redone')};
+$('applyPropsBtn').onclick=()=>{if(selected===null)return;snapshot();const desired=Math.max(1,parseInt($('propNumber').value)||balloons[selected].number);const b=balloons[selected];b.text=$('propText').value;b.x=Number($('propX').value)||b.x;b.y=Number($('propY').value)||b.y;b.type=guessType(b.text);moveBalloonToNumber(selected,desired);render();saveCurrentState();toast('Correction applied · sequence updated')};
+
+document.addEventListener('keydown',e=>{
+  if($('editorView').classList.contains('hidden'))return;
+  const tag=(e.target?.tagName||'').toLowerCase();
+  if(['input','textarea','select'].includes(tag))return;
+  if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='z'){e.preventDefault();$('undoBtn').click();}
+  if((e.ctrlKey||e.metaKey)&&(e.key.toLowerCase()==='y'||(e.shiftKey&&e.key.toLowerCase()==='z'))){e.preventDefault();$('redoBtn')?.click();}
+});
 
 const DRAWING_ZOOM_LEVELS=[.25,.33,.5,.67,.75,.8,.9,1,1.1,1.25,1.5,1.75,2,2.5,3,4,5];
 function nearestZoomIndex(value){let best=0,d=Infinity;DRAWING_ZOOM_LEVELS.forEach((z,i)=>{const nd=Math.abs(z-value);if(nd<d){d=nd;best=i}});return best}
@@ -488,12 +517,20 @@ function enableExcelGridResize(){
 }
 
 function reportPayload(r){const qty=inspectedQtyCount(r);return {...r,rows:r.rows.map(x=>{const readings=ensureReadings(x,qty);return {...x,number:Number(x.number)||1,readings,reading1:readings[0]||'',reading2:readings[1]||''}})}}
-function drawingExportPayload(d){const finalBalloons=normalizedExportBalloons(d.balloons);d.balloons=JSON.parse(JSON.stringify(finalBalloons));return{balloons:finalBalloons,original_balloons:d.originalBalloons||[],learn:true,project_name:$('projectTitle').textContent,drawing_number:d.drawing_number||''}}
-function projectDrawingPayload(){saveCurrentState();return drawings.filter(d=>d.balloons?.length).map(d=>{const finalBalloons=normalizedExportBalloons(d.balloons);d.balloons=JSON.parse(JSON.stringify(finalBalloons));return{drawing_id:d.drawing_id,balloons:finalBalloons,original_balloons:d.originalBalloons||[],drawing_number:d.drawing_number||''}})}
-async function downloadCurrentDrawing(){saveReportForm();const d=drawings[reportIndex];const res=await fetch(`${API}/export-one/${d.drawing_id}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(drawingExportPayload(d))});if(!res.ok){const j=await res.json().catch(()=>({}));throw new Error(j.detail||'Drawing PDF export failed')}downloadBlob(await res.blob(),`${(d.drawing_number||'drawing').replace(/[^a-z0-9_-]+/gi,'_')}_ballooned.pdf`)}
-async function downloadAllDrawings(){saveReportForm();const res=await fetch(`${API}/export-project/${projectId}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({project_name:$('projectTitle').textContent,learn:true,drawings:projectDrawingPayload()})});if(!res.ok){const j=await res.json().catch(()=>({}));throw new Error(j.detail||'Drawing ZIP export failed')}downloadBlob(await res.blob(),`${($('projectTitle').textContent||'drawings').replace(/[^a-z0-9_-]+/gi,'_')}_ballooned_drawings.zip`)}
-async function downloadCurrentExcel(){saveReportForm();const r=reports[reportIndex];const res=await fetch(`${API}/inspection-report/${r.drawing_id}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(reportPayload(r))});if(!res.ok){const j=await res.json().catch(()=>({}));throw new Error(j.detail||'Excel export failed')}downloadBlob(await res.blob(),`${(r.drawing_number||'drawing').replace(/[^a-z0-9_-]+/gi,'_')}_inspection_report.xlsx`)}
-async function downloadAllExcels(){saveReportForm();const res=await fetch(`${API}/inspection-reports/${projectId}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({project_name:$('projectTitle').textContent,reports:reports.map(reportPayload)})});if(!res.ok){const j=await res.json().catch(()=>({}));throw new Error(j.detail||'Excel ZIP export failed')}downloadBlob(await res.blob(),`${($('projectTitle').textContent||'reports').replace(/[^a-z0-9_-]+/gi,'_')}_inspection_reports.zip`)}
+function drawingExportPayload(d){const finalBalloons=normalizedExportBalloons(d.balloons||[]);d.balloons=JSON.parse(JSON.stringify(finalBalloons));return{balloons:finalBalloons,original_balloons:d.originalBalloons||[],learn:false,project_name:$('projectTitle').textContent,drawing_number:d.drawing_number||''}}
+function projectDrawingPayload(){saveCurrentState();return drawings.map(d=>{const finalBalloons=normalizedExportBalloons(d.balloons||[]);d.balloons=JSON.parse(JSON.stringify(finalBalloons));return{drawing_id:d.drawing_id,balloons:finalBalloons,original_balloons:d.originalBalloons||[],drawing_number:d.drawing_number||'',source_filename:d.source_filename||'',page_index:Number(d.page_index)||0}})}
+function sourceFileForDrawing(d){return selectedFiles.find(f=>f.name===d.source_filename)||null}
+async function downloadCurrentDrawing(){
+  saveReportForm();saveCurrentState();const d=drawings[reportIndex];const file=sourceFileForDrawing(d);if(!file)throw new Error('Original drawing file is unavailable. Re-select the source file before exporting.');
+  const fd=new FormData();fd.append('file',file);fd.append('page_index',String(Number(d.page_index)||0));fd.append('payload_json',JSON.stringify(drawingExportPayload(d)));
+  const res=await fetch(`${API}/export-one-upload`,{method:'POST',body:fd,cache:'no-store'});if(!res.ok){const j=await res.json().catch(()=>({}));throw new Error(j.detail||'Drawing PDF export failed')}downloadBlob(await res.blob(),`${(d.drawing_number||'drawing').replace(/[^a-z0-9_-]+/gi,'_')}_ballooned.pdf`)
+}
+async function downloadAllDrawings(){
+  saveReportForm();saveCurrentState();const fd=new FormData();selectedFiles.forEach(f=>fd.append('files',f));fd.append('payload_json',JSON.stringify({project_name:$('projectTitle').textContent,learn:false,drawings:projectDrawingPayload()}));
+  const res=await fetch(`${API}/export-project-upload`,{method:'POST',body:fd,cache:'no-store'});if(!res.ok){const j=await res.json().catch(()=>({}));throw new Error(j.detail||'Drawing ZIP export failed')}downloadBlob(await res.blob(),`${($('projectTitle').textContent||'drawings').replace(/[^a-z0-9_-]+/gi,'_')}_ballooned_drawings.zip`)
+}
+async function downloadCurrentExcel(){saveReportForm();const r=reports[reportIndex];const res=await fetch(`${API}/inspection-report/${r.drawing_id}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(reportPayload(r)),cache:'no-store'});if(!res.ok){const j=await res.json().catch(()=>({}));throw new Error(j.detail||'Excel export failed')}downloadBlob(await res.blob(),`${(r.drawing_number||'drawing').replace(/[^a-z0-9_-]+/gi,'_')}_inspection_report.xlsx`)}
+async function downloadAllExcels(){saveReportForm();const res=await fetch(`${API}/inspection-reports/${projectId||'edited'}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({project_name:$('projectTitle').textContent,reports:reports.map(reportPayload)}),cache:'no-store'});if(!res.ok){const j=await res.json().catch(()=>({}));throw new Error(j.detail||'Excel ZIP export failed')}downloadBlob(await res.blob(),`${($('projectTitle').textContent||'reports').replace(/[^a-z0-9_-]+/gi,'_')}_inspection_reports.zip`)}
 let downloadChoiceType='drawing';
 function openDownloadChoice(type){
   saveReportForm();downloadChoiceType=type;const isDrawing=type==='drawing',r=reports[reportIndex];
