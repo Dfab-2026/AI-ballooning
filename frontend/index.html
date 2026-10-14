@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>DFAB — Ballooning</title>
   <link rel="icon" type="image/png" href="assets/img/dfab-favicon.png" />
-  <link rel="stylesheet" href="assets/css/app.css?v=edited-export-final-1" />
+  <link rel="stylesheet" href="assets/css/app.css?v=excel-fullscreen-pan-1" />
 </head>
 <body>
 <div class="app-shell">
@@ -230,7 +230,7 @@
 
       <div class="report-manager-grid">
         <aside class="report-file-panel drawing-file-panel">
-          <div class="file-panel-head"><div><span class="section-label">DRAWING FILES</span><b id="reportDrawingCount">0 drawings</b></div><small>Click a drawing to inspect its matching report</small></div>
+          <div class="file-panel-head"><div><span class="section-label">DRAWING FILES</span><div class="file-panel-head-actions"><b id="reportDrawingCount">0 drawings</b><button id="closeDrawingFilesBtn" class="file-panel-close" type="button" title="Hide drawing files" aria-label="Hide drawing files">×</button></div></div><small>Click a drawing to inspect its matching report</small></div>
           <div id="reportDrawingGallery" class="report-drawing-gallery"></div>
         </aside>
 
@@ -285,9 +285,11 @@
         </section>
 
         <aside class="report-file-panel excel-file-panel">
-          <div class="file-panel-head"><div><span class="section-label">EXCEL REPORTS</span><b id="reportExcelCount">0 reports</b></div><small>One editable workbook per drawing</small></div>
+          <div class="file-panel-head"><div><span class="section-label">EXCEL REPORTS</span><div class="file-panel-head-actions"><b id="reportExcelCount">0 reports</b><button id="closeExcelFilesBtn" class="file-panel-close" type="button" title="Hide Excel reports" aria-label="Hide Excel reports">×</button></div></div><small>One editable workbook per drawing</small></div>
           <div id="reportExcelList" class="report-excel-list"></div>
         </aside>
+        <button id="showDrawingFilesBtn" class="report-panel-reopen report-panel-reopen-left hidden" type="button" title="Show drawing files" aria-label="Show drawing files">Drawings ›</button>
+        <button id="showExcelFilesBtn" class="report-panel-reopen report-panel-reopen-right hidden" type="button" title="Show Excel reports" aria-label="Show Excel reports">‹ Excel</button>
       </div>
       <footer class="report-footer"><div><span class="footer-label">SELECTED PAIR</span><b id="reportFooterStatus">Select a drawing/report pair</b></div><div>Drawing = PDF · Report = editable XLSX</div></footer>
     </section>
@@ -306,6 +308,6 @@
   </div>
 </div>
 <div id="toast" class="toast"></div>
-<script src="assets/js/app.js?v=edited-export-final-1"></script>
+<script src="assets/js/app.js?v=excel-fullscreen-pan-1"></script>
 </body>
 </html>

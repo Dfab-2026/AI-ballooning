@@ -45,6 +45,7 @@ if not os.getenv('VERCEL'):
     load_dotenv(os.path.join(BASE, '.env'))
 
 app = FastAPI(title='InspectBalloon API', version='0.7.0')
+ANALYSIS_RULESET_VERSION = 'inspectable-only-v2'
 app.add_middleware(CORSMiddleware, allow_origins=['*'], allow_methods=['*'], allow_headers=['*'])
 
 @app.middleware('http')
@@ -281,8 +282,11 @@ def _cached_analysis(drawing_id: str):
         try:
             with open(local, 'r', encoding='utf-8') as f:
                 result = json.load(f)
-            result['cached'] = True
-            return result
+            if result.get('analysis_ruleset') != ANALYSIS_RULESET_VERSION:
+                result = None
+            if result is not None:
+                result['cached'] = True
+                return result
         except Exception:
             pass
     preview = os.path.join(folder, 'preview.png')
@@ -294,6 +298,8 @@ def _cached_analysis(drawing_id: str):
         try:
             with open(shared, 'r', encoding='utf-8') as f:
                 result = json.load(f)
+            if result.get('analysis_ruleset') != ANALYSIS_RULESET_VERSION:
+                return None
             result = {**result, 'drawing_id': drawing_id, 'cached': True}
             with open(local, 'w', encoding='utf-8') as f:
                 json.dump(result, f, indent=2, ensure_ascii=False)
@@ -345,6 +351,7 @@ def _finalize_analysis_result(drawing_id: str, analysis: dict, cached: bool = Fa
         'drawing_date': analysis.get('drawing_date') or '',
         'quantity': analysis.get('quantity') or '',
         'engine': 'analysis',
+        'analysis_ruleset': ANALYSIS_RULESET_VERSION,
         'model': analysis.get('model'),
         'characteristics': characteristics,
         'count': len(characteristics),
@@ -391,8 +398,33 @@ def _copy_cell_style(src, dst) -> None:
         pass
 
 
-def _write_inspection_sheet(ws, report: InspectionReportPayload, rows: list[InspectionRow], page_no: int, total_pages: int) -> None:
-    # Preserve the uploaded workbook's layout, merges, images/signatures and styling.
+def _shift_footer_merges_for_extra_rows(ws, insert_at: int, extra_rows: int) -> None:
+    """Move footer merged ranges when the characteristic grid grows.
+
+    openpyxl moves cell values when inserting rows but intentionally does not rewrite
+    merged-cell definitions.  Rebuilding only the footer merges keeps the uploaded
+    template intact while allowing a single inspection sheet to contain every balloon.
+    """
+    if extra_rows <= 0:
+        return
+    footer_ranges = []
+    for merged in list(ws.merged_cells.ranges):
+        if merged.min_row >= insert_at:
+            footer_ranges.append((merged.min_row, merged.max_row, merged.min_col, merged.max_col))
+            ws.unmerge_cells(str(merged))
+    ws.insert_rows(insert_at, amount=extra_rows)
+    for min_row, max_row, min_col, max_col in footer_ranges:
+        ws.merge_cells(
+            start_row=min_row + extra_rows,
+            end_row=max_row + extra_rows,
+            start_column=min_col,
+            end_column=max_col,
+        )
+
+
+def _write_inspection_sheet(ws, report: InspectionReportPayload, rows: list[InspectionRow], page_no: int = 1, total_pages: int = 1) -> int:
+    # Preserve the uploaded workbook's layout, merges and styling, but dynamically
+    # extend the characteristic grid so one drawing always stays on one worksheet.
     ws['C7'] = report.part_name or ''
     ws['C8'] = report.drawing_number or ''
     ws['C9'] = report.customer or ''
@@ -410,6 +442,22 @@ def _write_inspection_sheet(ws, report: InspectionReportPayload, rows: list[Insp
     first_reading_col = 5  # E
     last_reading_col = first_reading_col + qty - 1
 
+    template_capacity = 18  # rows 12..29 in the supplied inspection template
+    extra_rows = max(0, len(rows) - template_capacity)
+    characteristic_last_row = 29 + extra_rows
+    remarks_row = 32 + extra_rows
+    signature_row = 34 + extra_rows
+
+    if extra_rows:
+        _shift_footer_merges_for_extra_rows(ws, 30, extra_rows)
+
+    # Keep every dynamically-added characteristic row visually identical to the
+    # original final characteristic row. Also normalise row heights because
+    # openpyxl does not shift RowDimension metadata when rows are inserted.
+    base_height = float(ws.row_dimensions[29].height or 15.75)
+    for row_no in range(12, characteristic_last_row + 1):
+        ws.row_dimensions[row_no].height = base_height
+
     # Dynamic sample headers: INSPECTED QTY 10 => result columns 1..10 (E:N).
     # We DO NOT insert worksheet columns.  This is intentional: the original
     # signature/approval cells and embedded signatures remain at their exact anchors.
@@ -425,14 +473,19 @@ def _write_inspection_sheet(ws, report: InspectionReportPayload, rows: list[Insp
 
     # Clear characteristic rows while retaining the template formatting.
     clear_to = max(last_reading_col, 6)
-    for row_no in range(12, 30):
+    for row_no in range(12, characteristic_last_row + 1):
         for col in range(1, clear_to + 1):
             cell = ws.cell(row=row_no, column=col)
-            if col > 6:
+            # Rows inserted after the original 18 are blank, so copy the final
+            # template characteristic-row style before writing values.
+            if row_no > 29:
+                style_source_col = col if col <= 6 else 6
+                _copy_cell_style(ws.cell(row=29, column=style_source_col), cell)
+            elif col > 6:
                 _copy_cell_style(ws.cell(row=row_no, column=6), cell)
             cell.value = None
 
-    for offset, item in enumerate(rows[:18]):
+    for offset, item in enumerate(rows):
         row_no = 12 + offset
         ws.cell(row=row_no, column=1).value = item.number
         ws.cell(row=row_no, column=2).value = item.description
@@ -445,25 +498,26 @@ def _write_inspection_sheet(ws, report: InspectionReportPayload, rows: list[Insp
                 _copy_cell_style(ws.cell(row=row_no, column=6), cell)
             cell.value = value or None
 
-    ws['A32'] = 'Remarks: ' + (report.remarks or '')
+    ws.cell(row=remarks_row, column=1).value = 'Remarks: ' + (report.remarks or '')
 
-    # Fixed large signature/stamp row for every generated template.
-    # Row 34 holds names/signatures/stamps; row 35 keeps the role labels.
-    ws.row_dimensions[34].height = max(float(ws.row_dimensions[34].height or 0), 72.0)
-    for cell_ref in ('A34', 'E34', 'J34'):
+    # Keep a large signature/stamp row directly below the expanded inspection grid.
+    ws.row_dimensions[signature_row].height = max(float(ws.row_dimensions[signature_row].height or 0), 72.0)
+    for col in (1, 5, 10):
         try:
-            alignment = copy.copy(ws[cell_ref].alignment)
+            cell = ws.cell(row=signature_row, column=col)
+            alignment = copy.copy(cell.alignment)
             alignment.horizontal = 'center'
             alignment.vertical = 'center'
-            ws[cell_ref].alignment = alignment
+            cell.alignment = alignment
         except Exception:
             pass
 
-    # Keep the three approval/signature blocks at the EXACT original template anchors.
-    # Never insert rows/columns before these cells.
-    ws['A34'] = report.inspected_by or ''       # A34:D34
-    ws['E34'] = report.qc_incharge or ''        # E34:I34
-    ws['J34'] = report.approved_by or ''        # J34:M34
+    # Preserve the three approval/signature blocks and move them down only when
+    # additional characteristic rows are required.
+    ws.cell(row=signature_row, column=1).value = report.inspected_by or ''       # A:D
+    ws.cell(row=signature_row, column=5).value = report.qc_incharge or ''         # E:I
+    ws.cell(row=signature_row, column=10).value = report.approved_by or ''        # J:M
+    return signature_row
 
 
 def _build_inspection_workbook(report: InspectionReportPayload, out_path: str) -> None:
@@ -494,7 +548,7 @@ def _build_inspection_workbook(report: InspectionReportPayload, out_path: str) -
             pass
     source._images = []
 
-    def add_template_images(ws):
+    def add_template_images(ws, signature_row: int):
         # Signature/stamp images are re-anchored into the tall row directly above
         # INSPECTED BY / QC INCHARGE / APPROVED BY.  Using a fixed one-cell anchor
         # prevents Excel from stretching or shifting the stamps when row heights or
@@ -545,7 +599,7 @@ def _build_inspection_workbook(report: InspectionReportPayload, out_path: str) -
 
                 start_col, end_col = block
                 block_width = sum(col_width_px(c) for c in range(start_col, end_col + 1))
-                row_height_pt = max(float(ws.row_dimensions[34].height or 72.0), 72.0)
+                row_height_pt = max(float(ws.row_dimensions[signature_row].height or 72.0), 72.0)
                 row_height_px = int(row_height_pt * 96 / 72)
 
                 # Fit the stamp entirely inside the large signature row with margin,
@@ -564,7 +618,7 @@ def _build_inspection_workbook(report: InspectionReportPayload, out_path: str) -
                 marker = AnchorMarker(
                     col=start_col - 1,
                     colOff=pixels_to_EMU(x_off),
-                    row=33,
+                    row=signature_row - 1,
                     rowOff=pixels_to_EMU(y_off),
                 )
                 extent = XDRPositiveSize2D(
@@ -581,19 +635,10 @@ def _build_inspection_workbook(report: InspectionReportPayload, out_path: str) -
                 # Never allow a bad stamp anchor to break report generation.
                 pass
 
-    add_template_images(source)
     rows = sorted(report.rows, key=lambda r: int(r.number))
-    chunks = [rows[i:i + 18] for i in range(0, len(rows), 18)] or [[]]
-    sheets = [source]
-    for _ in range(1, len(chunks)):
-        copied = wb.copy_worksheet(source)
-        copied._images = []
-        add_template_images(copied)
-        sheets.append(copied)
-    total_pages = len(chunks)
-    for i, (ws, chunk) in enumerate(zip(sheets, chunks), start=1):
-        ws.title = 'Inspection' if total_pages == 1 else f'Inspection {i}'
-        _write_inspection_sheet(ws, report, chunk, i, total_pages)
+    source.title = 'Inspection'
+    signature_row = _write_inspection_sheet(source, report, rows, 1, 1)
+    add_template_images(source, signature_row)
     wb.save(out_path)
 
 

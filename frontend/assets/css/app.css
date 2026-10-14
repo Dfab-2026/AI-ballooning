@@ -1356,3 +1356,25 @@ body.add-balloon-mode #overlay{cursor:var(--d-cursor-final),default!important}
 
 /* Final balloon label visibility: keep normal circle, enlarge only the number. */
 .balloon text{font-size:13px!important;font-weight:950!important;dominant-baseline:middle;text-anchor:middle}
+
+/* === Excel workspace collapsible side files + mouse panning === */
+.report-manager-grid{position:relative;transition:grid-template-columns .18s ease}
+.report-manager-grid.hide-drawing-files{grid-template-columns:0 minmax(0,1fr) 260px}
+.report-manager-grid.hide-excel-files{grid-template-columns:245px minmax(0,1fr) 0}
+.report-manager-grid.hide-drawing-files.hide-excel-files{grid-template-columns:0 minmax(0,1fr) 0}
+.report-manager-grid.hide-drawing-files .drawing-file-panel,
+.report-manager-grid.hide-excel-files .excel-file-panel{visibility:hidden;opacity:0;pointer-events:none;border:0}
+.file-panel-head-actions{display:flex;align-items:center;gap:7px;min-width:0}
+.file-panel-close{width:24px;height:24px;flex:0 0 24px;border:1px solid #d4dde7;border-radius:6px;background:#fff;color:#64748b;font-size:17px;line-height:1;display:grid;place-items:center;padding:0;cursor:pointer}
+.file-panel-close:hover{background:#f1f5f9;color:#0f172a;border-color:#aab8c7}
+.report-panel-reopen{position:absolute;z-index:40;top:50%;transform:translateY(-50%);height:86px;padding:0 8px;border:1px solid #cbd5e1;background:#fff;color:#2563eb;font-size:10px;font-weight:800;box-shadow:0 3px 12px rgba(15,23,42,.14);cursor:pointer}
+.report-panel-reopen-left{left:0;border-left:0;border-radius:0 8px 8px 0;writing-mode:vertical-rl}
+.report-panel-reopen-right{right:0;border-right:0;border-radius:8px 0 0 8px;writing-mode:vertical-rl;transform:translateY(-50%) rotate(180deg)}
+.excel-sheet.excel-pan-ready{cursor:grab}
+.excel-sheet.excel-panning{cursor:grabbing;user-select:none}
+.excel-sheet.excel-panning *{cursor:grabbing!important}
+@media (max-width:1500px){
+  .report-manager-grid.hide-drawing-files{grid-template-columns:0 minmax(0,1fr) 230px}
+  .report-manager-grid.hide-excel-files{grid-template-columns:220px minmax(0,1fr) 0}
+  .report-manager-grid.hide-drawing-files.hide-excel-files{grid-template-columns:0 minmax(0,1fr) 0}
+}

@@ -422,8 +422,61 @@ function applyExcelZoom(anchorCenter=true,anchor=null){const sc=$('excelSheet'),
 function fitExcelView(){const sc=$('excelSheet'),inner=$('excelSheetInner');if(!sc||!inner)return;inner.style.zoom=1;const baseW=Math.max(1,inner.scrollWidth),baseH=Math.max(1,inner.scrollHeight);const pad=18;excelZoom=Math.min((sc.clientWidth-pad)/baseW,(sc.clientHeight-pad)/baseH,1.25);excelZoom=Math.max(.5,excelZoom);applyExcelZoom(false);requestAnimationFrame(()=>{sc.scrollLeft=Math.max(0,(sc.scrollWidth-sc.clientWidth)/2);sc.scrollTop=0})}
 function excelZoomStep(direction,anchor=null){let next;if(direction>0){next=EXCEL_ZOOM_LEVELS.findIndex(z=>z>excelZoom+0.005);if(next<0)next=EXCEL_ZOOM_LEVELS.length-1}else{next=0;for(let i=EXCEL_ZOOM_LEVELS.length-1;i>=0;i--){if(EXCEL_ZOOM_LEVELS[i]<excelZoom-0.005){next=i;break}}}excelZoom=EXCEL_ZOOM_LEVELS[next];applyExcelZoom(true,anchor)}
 if($('excelZoomInBtn'))$('excelZoomInBtn').onclick=()=>excelZoomStep(1);if($('excelZoomOutBtn'))$('excelZoomOutBtn').onclick=()=>excelZoomStep(-1);if($('excelFitBtn'))$('excelFitBtn').onclick=fitExcelView;if($('excelZoomPercent'))$('excelZoomPercent').onclick=()=>{excelZoom=1;applyExcelZoom()};
-let excelWheelLock=false;
-if($('excelSheet'))$('excelSheet').addEventListener('wheel',e=>{if(e.target.closest('input,textarea,select')&&e.shiftKey)return;e.preventDefault();if(excelWheelLock)return;excelWheelLock=true;setTimeout(()=>excelWheelLock=false,110);const rect=$('excelSheet').getBoundingClientRect();excelZoomStep(e.deltaY<0?1:-1,{clientX:e.clientX-rect.left,clientY:e.clientY-rect.top})},{passive:false});
+const reportManager=document.querySelector('.report-manager-grid');
+function setReportSidePanel(side,visible){
+  if(!reportManager)return;
+  const cls=side==='drawing'?'hide-drawing-files':'hide-excel-files';
+  reportManager.classList.toggle(cls,!visible);
+  const closeBtn=$(side==='drawing'?'closeDrawingFilesBtn':'closeExcelFilesBtn');
+  const showBtn=$(side==='drawing'?'showDrawingFilesBtn':'showExcelFilesBtn');
+  if(closeBtn)closeBtn.setAttribute('aria-expanded',String(visible));
+  if(showBtn)showBtn.classList.toggle('hidden',visible);
+  requestAnimationFrame(()=>{if($('excelSheet'))applyExcelZoom(false)});
+}
+if($('closeDrawingFilesBtn'))$('closeDrawingFilesBtn').onclick=()=>setReportSidePanel('drawing',false);
+if($('showDrawingFilesBtn'))$('showDrawingFilesBtn').onclick=()=>setReportSidePanel('drawing',true);
+if($('closeExcelFilesBtn'))$('closeExcelFilesBtn').onclick=()=>setReportSidePanel('excel',false);
+if($('showExcelFilesBtn'))$('showExcelFilesBtn').onclick=()=>setReportSidePanel('excel',true);
+
+const excelScroller=$('excelSheet');
+let excelPan=null;
+if(excelScroller){
+  excelScroller.classList.add('excel-pan-ready');
+  excelScroller.addEventListener('pointerdown',e=>{
+    if(e.button!==0)return;
+    if(e.target.closest('input,textarea,select,button,a,[contenteditable=\"true\"]'))return;
+    excelPan={pointerId:e.pointerId,startX:e.clientX,startY:e.clientY,left:excelScroller.scrollLeft,top:excelScroller.scrollTop,moved:false};
+    excelScroller.classList.add('excel-panning');
+    excelScroller.setPointerCapture?.(e.pointerId);
+  });
+  excelScroller.addEventListener('pointermove',e=>{
+    if(!excelPan||excelPan.pointerId!==e.pointerId)return;
+    const dx=e.clientX-excelPan.startX,dy=e.clientY-excelPan.startY;
+    if(Math.abs(dx)+Math.abs(dy)>3)excelPan.moved=true;
+    excelScroller.scrollLeft=excelPan.left-dx;
+    excelScroller.scrollTop=excelPan.top-dy;
+  });
+  const endExcelPan=e=>{
+    if(!excelPan||excelPan.pointerId!==e.pointerId)return;
+    excelPan=null;
+    excelScroller.classList.remove('excel-panning');
+    try{excelScroller.releasePointerCapture?.(e.pointerId)}catch{}
+  };
+  excelScroller.addEventListener('pointerup',endExcelPan);
+  excelScroller.addEventListener('pointercancel',endExcelPan);
+  excelScroller.addEventListener('wheel',e=>{
+    if(e.ctrlKey||e.metaKey){
+      e.preventDefault();
+      const rect=excelScroller.getBoundingClientRect();
+      excelZoomStep(e.deltaY<0?1:-1,{clientX:e.clientX-rect.left,clientY:e.clientY-rect.top});
+      return;
+    }
+    e.preventDefault();
+    const horizontal=e.shiftKey||Math.abs(e.deltaX)>Math.abs(e.deltaY);
+    if(horizontal)excelScroller.scrollLeft+=e.deltaX||e.deltaY;
+    else excelScroller.scrollTop+=e.deltaY;
+  },{passive:false});
+}
 
 function downloadBlob(blob,name){const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),1500)}
 

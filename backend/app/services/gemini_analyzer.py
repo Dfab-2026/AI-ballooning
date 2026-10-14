@@ -17,6 +17,7 @@ class GeminiCharacteristic(BaseModel):
     center_y: float = Field(description='Vertical center normalized from 0 to 1000')
     confidence: float = Field(description='Confidence from 0.0 to 1.0')
     description: Optional[str] = Field(default=None, description='Concise feature description from visible drawing context, e.g. Overall length, Hole diameter, Thread callout. Do not guess.')
+    inspection_required: bool = Field(description='True only when this visible item is a real product requirement that needs a measured value or explicit pass/fail inspection result. False for administrative, informational, reference-only, view/zone/BOM, or process-only text.')
 
 
 class GeminiDrawingAnalysis(BaseModel):
@@ -81,6 +82,8 @@ Include when visibly present:
 - surface-finish requirements
 
 Do NOT create characteristics from drawing number, revision, sheet number, scale, dates, quantities, material names, company/title-block administrative text, BOM item numbers, random standalone digits, or duplicate text belonging to the same characteristic. IMPORTANT: a plain number by itself IS a valid characteristic when it is visibly the value of a dimension and is connected to or centered on a dimension line, extension lines, or dimension arrowheads. Examples: 10, 16, 24, 50, 64, 100. Do not confuse those dimensional values with item numbers, zone numbers, view labels, sheet numbers, or title-block values.
+
+STRICT INSPECTION FILTER: balloon only requirements that belong in a dimensional/inspection result row: measurable dimensions/tolerances/GD&T/features or an explicit product requirement that has a clear pass/fail acceptance criterion. Mark inspection_required=false and OMIT from the final characteristic list any title-block field, BOM/balloon item number, view/detail/section/zone label, page/grid coordinate, leader note that merely identifies a part, generic manufacturing/process instruction without an inspection acceptance criterion, reference-only dimension marked REF/REFERENCE, or decorative/administrative text. Do not balloon text merely because it contains a number. When uncertain whether an item requires an inspection result, exclude it.
 
 For each characteristic also return a short description based only on visible nearby feature context (for example Overall length, Hole diameter, Radius, Thread callout). If the feature name is not visible or inferable without guessing, use a generic type-based description. Return its exact visible text and a balloon target in normalized coordinates where x=0 is left, x=1000 is right, y=0 is top, y=1000 is bottom. For balloon placement, use CIRCLE-ONLY ballooning: there must be NO leader line and NO arrow. Return a target point that is the CENTER of the numbered balloon circle. The circle must sit only in EMPTY WHITE SPACE beside the reading, above the reading, or below the reading. STRICTLY NEVER place the circle over or touching any digit, decimal point, tolerance, diameter/radius symbol, GD&T text, note, word, dimension line, extension line, feature outline, centerline, or other drawing stroke. Keep a visible white safety gap around the entire circle edge. For a normal 18 px radius preview balloon, leave at least about 7-10 px of additional white clearance, so the nearest drawing/text pixel is roughly 25-28 px or more from the circle center. Prefer a clear position directly above the reading; if the top is occupied, try the nearest clear right/left side; if those are occupied, use a clear position below. Never squeeze a circle between characters or between a reading and a line. Keep each circle visually associated with its own measurement and avoid collisions with other balloon circles. Return each real characteristic once.
 - Exclude general notes, welding/process instructions, BOM rows, part labels, view labels, section labels, zone coordinates, page borders, title blocks and revision tables unless the text itself is an inspection characteristic.
@@ -258,8 +261,12 @@ def _looks_like_inspection_characteristic(c) -> bool:
     if not text:
         return False
     upper=text.upper()
-    admin_terms=('DRAWING NO','DRAWING NUMBER','DWG NO','REV','REVISION','SHEET','SCALE','DATE','QTY','QUANTITY','MATERIAL','DRAWN BY','CHECKED BY','APPROVED BY','CUSTOMER','PROJECT','PO NO','PART NAME','TITLE')
+    if getattr(c, 'inspection_required', True) is False:
+        return False
+    admin_terms=('DRAWING NO','DRAWING NUMBER','DWG NO','REV','REVISION','SHEET','SCALE','DATE','QTY','QUANTITY','MATERIAL','DRAWN BY','CHECKED BY','APPROVED BY','CUSTOMER','PROJECT','PO NO','PART NAME','TITLE','DETAIL ','SECTION ','VIEW ','ZONE ','ITEM ','BOM ')
     if any(term in upper for term in admin_terms):
+        return False
+    if re.search(r'\bREF(?:ERENCE)?\b', upper):
         return False
     ctype=str(getattr(c,'type','OTHER')).upper()
     # Plain numeric readings (e.g. 10, 24, 64, 100) are legitimate drawing
@@ -337,7 +344,17 @@ def _snap_target_to_line(image_path: str, tx: float, ty: float) -> tuple[float, 
 
 def _to_output(parsed, width:int, height:int, image_path: str | None = None):
     min_conf=max(0.55,min(float(os.getenv('GEMINI_MIN_CONFIDENCE','0.68')),0.95))
-    detected=[c for c in parsed.characteristics if c.confidence>=min_conf and _looks_like_inspection_characteristic(c)]
+    detected=[]
+    for c in parsed.characteristics:
+        if c.confidence < min_conf or not _looks_like_inspection_characteristic(c):
+            continue
+        # Bare numbers are the most common false-positive class (BOM items, zones,
+        # sheet/grid labels). Keep them only when the vision model is highly certain
+        # they are true dimensional requirements. Symbolic/toleranced dimensions keep
+        # the normal confidence threshold.
+        if re.fullmatch(r'\s*\d+(?:\.\d+)?\s*', (c.text or '')) and c.confidence < 0.90:
+            continue
+        detected.append(c)
     detected.sort(key=lambda c:(c.center_y,c.center_x))
     output=[]; occupied=[]; seen=set()
     gray = None
